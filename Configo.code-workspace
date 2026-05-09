@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "Configo-Backend"
+		},
+		{
+			"path": "Configo-Deployment"
+		},
+		{
+			"path": "Configo-Developer-Frontend"
+		},
+		{
+			"path": "Configo-Frontend"
+		},
+		{
+			"path": "configo-knowledge"
+		},
+		{
+			"path": "Configo-Web-Frontend"
+		}
+	]
+}

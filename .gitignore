@@ -1,0 +1,14 @@
+# Ignore all sub-repos (they have their own git)
+Configo-Backend/
+Configo-Frontend/
+Configo-Web-Frontend/
+Configo-Developer-Frontend/
+Configo-Deployment/
+configo-knowledge/
+bones/
+docs/
+tools/
+
+# Ignore other generated files
+graphify-out/
+.engram-installed
