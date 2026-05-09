@@ -1,4 +1,4 @@
-# Ignore all sub-repos (they have their own git)
+# Ignore sub-repos (cloned by setup script)
 Configo-Backend/
 Configo-Frontend/
 Configo-Web-Frontend/
