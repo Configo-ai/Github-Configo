@@ -4,6 +4,9 @@
 			"path": "Configo-Backend"
 		},
 		{
+			"path": "Configo-AI-Worker"
+		},
+		{
 			"path": "Configo-Deployment"
 		},
 		{
@@ -13,7 +16,34 @@
 			"path": "Configo-Frontend"
 		},
 		{
-			"path": "configo-knowledge"
+			"path": "backend"
+		},
+		{
+			"path": "frontend"
+		},
+		{
+			"path": "web-frontend"
+		},
+		{
+			"path": "developer-frontend"
+		},
+		{
+			"path": "deployment"
+		},
+		{
+			"path": "ai-worker"
+		},
+		{
+			"path": "graphify"
+		},
+		{
+			"path": "patches"
+		},
+		{
+			"path": "hooks"
+		},
+		{
+			"path": ".claude"
 		},
 		{
 			"path": "Configo-Web-Frontend"

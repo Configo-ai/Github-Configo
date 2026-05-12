@@ -1,0 +1,7 @@
+#!/bin/bash
+# Auto-updates knowledge graph and CLAUDE.md after every commit
+
+ROOT_DIR="$HOME/Documents/Github-Configo"
+
+# Run silently in background to not slow down git workflow
+"$ROOT_DIR/scripts/update-graph.sh" --silent &

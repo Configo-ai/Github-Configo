@@ -5,11 +5,13 @@ Configo-Frontend/
 Configo-Web-Frontend/
 Configo-Developer-Frontend/
 Configo-Deployment/
-configo-knowledge/
 bones/
-docs/
-tools/
 
 # Ignore other generated files
 graphify-out/
 .engram-installed
+graphify/cost.json
+.mempalace/
+.claude/settings.local.json
+__pycache__/
+*.pyc

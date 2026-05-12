@@ -68,21 +68,13 @@ if exist "Configo-Deployment" (
     echo   [OK] Configo-Deployment cloned
 )
 
-REM configo-knowledge
-if exist "configo-knowledge" (
-    echo   [SKIP] configo-knowledge already exists
-) else (
-    echo   Cloning configo-knowledge...
-    git clone https://github.com/Configo-ai/configo-knowledge.git
-    echo   [OK] configo-knowledge cloned
-)
-
 echo.
 echo   Setup complete!
 echo   ─────────────────────────────────────────────────────────
 echo   Next steps:
-echo   1. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
-echo   2. Fill in your staging credentials in Configo-Backend\.env.staging
-echo   3. Run scripts\dev.bat to start all servers
+echo   1. Run scripts\bootstrap.bat to configure Claude, graphify and repo hooks
+echo   2. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
+echo   3. Fill in your staging credentials in Configo-Backend\.env.staging
+echo   4. Run scripts\dev.bat to start all servers
 echo   ─────────────────────────────────────────────────────────
 echo.
