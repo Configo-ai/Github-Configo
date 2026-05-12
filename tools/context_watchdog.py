@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,6 +40,26 @@ def _post_edit_message() -> str:
     )
 
 
+def _run_mempalace(*args: str, timeout: int = 10) -> str | None:
+    executable = shutil.which("mempalace")
+    if not executable:
+        return None
+    try:
+        result = subprocess.run(
+            [executable, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    output = result.stdout.strip()
+    return output or None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--brief", action="store_true")
@@ -68,7 +90,11 @@ def main() -> None:
         return
 
     if args.sessionstart_json:
-        _emit_hook("SessionStart", _brief(root))
+        wake_up = _run_mempalace("wake-up")
+        message = _brief(root)
+        if wake_up:
+            message = f"{message}\nmempalace wake-up:\n{wake_up}"
+        _emit_hook("SessionStart", message)
         return
 
     if args.post_edit_json:
@@ -76,6 +102,16 @@ def main() -> None:
         return
 
     if args.stop_json:
+        projects_dir = Path.home() / ".claude" / "projects"
+        _run_mempalace(
+            "mine",
+            str(projects_dir),
+            "--mode",
+            "convos",
+            "--wing",
+            "claude-sessions",
+            timeout=30,
+        )
         _emit_hook("Stop", "Session complete. If graph-sensitive files changed, run scripts/update-graph.")
         return
 

@@ -77,6 +77,7 @@ def configure_home(root: Path, platform: str) -> None:
 
     python_exe = sys.executable
     statusline = root / "tools" / "statusline.py"
+    watchdog = root / "tools" / "context_watchdog.py"
     settings.setdefault("mcpServers", {})["mempalace"] = {
         "command": python_exe,
         "args": ["-m", "mempalace.mcp_server"],
@@ -85,6 +86,43 @@ def configure_home(root: Path, platform: str) -> None:
     settings["statusLine"] = {
         "type": "command",
         "command": f'"{python_exe}" "{statusline}"',
+    }
+    settings["hooks"] = {
+        "SessionStart": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python_exe}" "{watchdog}" --sessionstart-json --brief',
+                        "timeout": 10000,
+                    }
+                ],
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write|NotebookEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python_exe}" "{watchdog}" --post-edit-json',
+                    }
+                ],
+            }
+        ],
+        "Stop": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python_exe}" "{watchdog}" --stop-json',
+                        "timeout": 30000,
+                    }
+                ],
+            }
+        ],
     }
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
