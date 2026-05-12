@@ -23,6 +23,7 @@ scripts\setup.bat
 
 This will clone all Configo repositories:
 - Configo-Backend
+- Configo-AI-Worker
 - Configo-Frontend
 - Configo-Web-Frontend
 - Configo-Developer-Frontend
@@ -60,6 +61,7 @@ Or via VS Code/Windsurf:
 
 ```
 Github-Configo/
+├── Configo-AI-Worker/        # AI worker and orchestration service
 ├── Configo-Backend/           # Go backend
 ├── Configo-Frontend/          # Main React frontend (port 8080)
 ├── Configo-Web-Frontend/      # Web frontend (port 8081)

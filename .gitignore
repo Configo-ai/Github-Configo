@@ -1,5 +1,6 @@
 # Ignore sub-repos (cloned by setup script)
 Configo-Backend/
+Configo-AI-Worker/
 Configo-Frontend/
 Configo-Web-Frontend/
 Configo-Developer-Frontend/

@@ -15,6 +15,7 @@ echo ""
 # Repository URLs
 REPOS=(
   "Configo-Backend:https://github.com/Configo-ai/Configo-Backend.git"
+  "Configo-AI-Worker:https://github.com/Configo-ai/Configo-AI-Worker.git"
   "Configo-Frontend:https://github.com/Configo-ai/Configo-Frontend.git"
   "Configo-Web-Frontend:https://github.com/Configo-ai/Configo-Web-Frontend.git"
   "Configo-Developer-Frontend:https://github.com/Configo-ai/Configo-Developer-Frontend.git"

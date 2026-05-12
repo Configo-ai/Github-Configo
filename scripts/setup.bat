@@ -23,6 +23,15 @@ if exist "Configo-Backend" (
     echo   [OK] Configo-Backend cloned
 )
 
+REM Configo-AI-Worker
+if exist "Configo-AI-Worker" (
+    echo   [SKIP] Configo-AI-Worker already exists
+) else (
+    echo   Cloning Configo-AI-Worker...
+    git clone https://github.com/Configo-ai/Configo-AI-Worker.git
+    echo   [OK] Configo-AI-Worker cloned
+)
+
 REM Configo-Frontend
 if exist "Configo-Frontend" (
     echo   [SKIP] Configo-Frontend already exists
