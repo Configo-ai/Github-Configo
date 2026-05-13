@@ -34,9 +34,6 @@
 			"path": "ai-worker"
 		},
 		{
-			"path": "graphify"
-		},
-		{
 			"path": "patches"
 		},
 		{

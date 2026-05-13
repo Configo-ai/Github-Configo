@@ -8,10 +8,6 @@ Configo-Deployment/
 bones/
 
 # Ignore other generated files
-graphify-out/
-.engram-installed
-graphify/cost.json
-.mempalace/
 .claude/settings.local.json
 __pycache__/
 *.pyc

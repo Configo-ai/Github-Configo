@@ -1,6 +1,6 @@
 # Configo Knowledge
 
-Central knowledge vault for alle Configo repos. Indeholder dokumentation, AI-konventioner, knowledge graph og hukommelse på tværs af sessioner, nu direkte i `Github-Configo`.
+Central knowledge vault for alle Configo repos. Indeholder dokumentation og AI-konventioner på tværs af sessioner, nu direkte i `Github-Configo`, mens kodekontekst hentes via Augment Context Engine MCP.
 
 ## Platform support
 
@@ -22,30 +22,35 @@ cd Github-Configo
 ./scripts/bootstrap.sh
 ```
 
-Bootstrap installerer og konfigurerer automatisk:
-- Claude Code
-- GitHub CLI
-- Obsidian
-- Python, Graphify, MemPalace, Engram
+Setup installerer og konfigurerer automatisk:
+- OpenCode
+- Augment Context Engine MCP (`auggie`)
+- Auggie CLI
+- Superpowers plugin til OpenCode
+- Context7 til OpenCode
 - Alle Configo repos
-- Git hooks, symlinks og MCP-server
+- Workspace CLAUDE-filer og shared skills
+
+Augment sættes op i en hybrid model:
+- Lokal MCP til live workspace-ændringer og upush’et kode
+- Remote MCP til GitHub-org og cross-repo kontekst via Augment GitHub App
 
 ## Hvad der synkroniseres via git
 
 | Indhold | Placering |
 |---------|-----------|
 | Dokumentation | `backend/`, `frontend/`, osv. |
-| Knowledge graph | `graphify/` |
-| Graph cache | `graphify/cache/` |
-| AI-hukommelse | `.mempalace/` |
 | Skills & hooks | `.claude/` |
 
 Nyere repo-retninger dokumenteres også her, herunder tværgående AI-arkitektur som `Configo-AI-Worker` og delte AI-kontrakter mellem frontends.
 
-## Opdater knowledge graph manuelt
+## Augment MCP setup efter bootstrap
 
 ```bash
-./scripts/update-graph.sh
+auggie login
 ```
 
-Kører automatisk efter hvert commit via git hooks.
+Derefter:
+- installer Augment GitHub App på organisationen
+- vælg Configo-repos i Augment til remote indeksering
+- åbn OpenCode og bekræft at både `augment-context-engine-local` og `augment-context-engine-remote` står som enabled

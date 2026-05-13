@@ -1,7 +1,4 @@
 @echo off
-REM Configo Workspace Setup Script (Windows)
-REM Clones all Configo repositories if they don't exist
-
 setlocal EnableDelayedExpansion
 
 echo.
@@ -14,67 +11,95 @@ set ROOT=%SCRIPT_DIR%..
 
 cd /d "%ROOT%"
 
-REM Configo-Backend
-if exist "Configo-Backend" (
-    echo   [SKIP] Configo-Backend already exists
-) else (
-    echo   Cloning Configo-Backend...
-    git clone https://github.com/Configo-ai/Configo-Backend.git
-    echo   [OK] Configo-Backend cloned
+where git >nul 2>nul
+if errorlevel 1 (
+    echo   [ERROR] Git is required
+    exit /b 1
 )
 
-REM Configo-AI-Worker
-if exist "Configo-AI-Worker" (
-    echo   [SKIP] Configo-AI-Worker already exists
-) else (
-    echo   Cloning Configo-AI-Worker...
-    git clone https://github.com/Configo-ai/Configo-AI-Worker.git
-    echo   [OK] Configo-AI-Worker cloned
+where python >nul 2>nul
+if errorlevel 1 (
+    echo   [ERROR] Python is required
+    exit /b 1
 )
 
-REM Configo-Frontend
-if exist "Configo-Frontend" (
-    echo   [SKIP] Configo-Frontend already exists
-) else (
-    echo   Cloning Configo-Frontend...
-    git clone https://github.com/Configo-ai/Configo-Frontend.git
-    echo   [OK] Configo-Frontend cloned
+where node >nul 2>nul
+if errorlevel 1 (
+    echo   [ERROR] Node.js is required
+    exit /b 1
 )
 
-REM Configo-Web-Frontend
-if exist "Configo-Web-Frontend" (
-    echo   [SKIP] Configo-Web-Frontend already exists
-) else (
-    echo   Cloning Configo-Web-Frontend...
-    git clone https://github.com/Configo-ai/Configo-Web-Frontend.git
-    echo   [OK] Configo-Web-Frontend cloned
+where npm >nul 2>nul
+if errorlevel 1 (
+    echo   [ERROR] npm is required
+    exit /b 1
 )
 
-REM Configo-Developer-Frontend
-if exist "Configo-Developer-Frontend" (
-    echo   [SKIP] Configo-Developer-Frontend already exists
+call :ensure_repo "Configo-Backend" "https://github.com/Configo-ai/Configo-Backend.git"
+call :ensure_repo "Configo-AI-Worker" "https://github.com/Configo-ai/Configo-AI-Worker.git"
+call :ensure_repo "Configo-Frontend" "https://github.com/Configo-ai/Configo-Frontend.git"
+call :ensure_repo "Configo-Web-Frontend" "https://github.com/Configo-ai/Configo-Web-Frontend.git"
+call :ensure_repo "Configo-Developer-Frontend" "https://github.com/Configo-ai/Configo-Developer-Frontend.git"
+call :ensure_repo "Configo-Deployment" "https://github.com/Configo-ai/Configo-Deployment.git"
+
+echo.
+where opencode >nul 2>nul
+if errorlevel 1 (
+    echo   Installing OpenCode...
+    call npm install -g opencode-ai
+)
+echo   [OK] OpenCode ready
+
+echo.
+where auggie >nul 2>nul
+if errorlevel 1 (
+    echo   Installing Auggie CLI...
+    call npm install -g @augmentcode/auggie@latest
+)
+echo   [OK] Auggie ready
+
+echo.
+if not exist "%USERPROFILE%\.config\opencode" mkdir "%USERPROFILE%\.config\opencode"
+echo   Installing Superpowers for OpenCode...
+call npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "%USERPROFILE%\.config\opencode"
+echo   [OK] Superpowers ready
+
+echo.
+echo   Configuring Context7 for OpenCode...
+call npx -y ctx7 setup --opencode --yes
+if errorlevel 1 (
+    echo   [WARN] Context7 setup needs manual completion
 ) else (
-    echo   Cloning Configo-Developer-Frontend...
-    git clone https://github.com/Configo-ai/Configo-Developer-Frontend.git
-    echo   [OK] Configo-Developer-Frontend cloned
+    echo   [OK] Context7 configured
 )
 
-REM Configo-Deployment
-if exist "Configo-Deployment" (
-    echo   [SKIP] Configo-Deployment already exists
-) else (
-    echo   Cloning Configo-Deployment...
-    git clone https://github.com/Configo-ai/Configo-Deployment.git
-    echo   [OK] Configo-Deployment cloned
-)
+echo.
+echo   Configuring OpenCode and cleaning legacy graphify/mempalace state...
+python "%ROOT%\tools\setup_opencode.py" configure --root "%ROOT%"
+if errorlevel 1 exit /b 1
+echo   [OK] OpenCode configured
 
 echo.
 echo   Setup complete!
-echo   ─────────────────────────────────────────────────────────
+echo   ---------------------------------------------------------
 echo   Next steps:
-echo   1. Run scripts\bootstrap.bat to configure Claude, graphify and repo hooks
-echo   2. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
-echo   3. Fill in your staging credentials in Configo-Backend\.env.staging
-echo   4. Run scripts\dev.bat to start all servers
-echo   ─────────────────────────────────────────────────────────
+echo   1. Run "auggie login" if this machine is not already authenticated
+echo   2. Install the Augment GitHub App and select the Configo repos for remote indexing
+echo   3. Open OpenCode and confirm both "augment-context-engine-local" and "augment-context-engine-remote" are enabled
+echo   4. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
+echo   5. Fill in your staging credentials in Configo-Backend\.env.staging
+echo   6. Run scripts\dev.bat to start all servers
+echo   ---------------------------------------------------------
 echo.
+exit /b 0
+
+:ensure_repo
+if exist "%~1" (
+    echo   [SKIP] %~1 already exists
+) else (
+    echo   Cloning %~1...
+    git clone %~2
+    if errorlevel 1 exit /b 1
+    echo   [OK] %~1 cloned
+)
+exit /b 0
