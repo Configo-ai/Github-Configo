@@ -74,7 +74,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo   Configuring OpenCode and cleaning legacy graphify/mempalace state...
+echo   Configuring OpenCode...
 python "%ROOT%\tools\setup_opencode.py" configure --root "%ROOT%"
 if errorlevel 1 exit /b 1
 echo   [OK] OpenCode configured

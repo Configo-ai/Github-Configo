@@ -67,17 +67,10 @@ def _remove_path(path: Path) -> None:
 
 
 def cleanup_legacy(root: Path) -> None:
-    _remove_path(root / ".engram-installed")
-    _remove_path(root / "graphify-out")
-
     home = Path.home()
-    _remove_path(home / ".mempalace")
     _remove_path(home / ".claude" / "statusline-command.sh")
     _remove_path(home / ".config" / "opencode" / "plugins" / "superpowers.js")
     _remove_path(home / ".config" / "opencode" / "skills" / "superpowers")
-
-    for repo in REPOS:
-        _remove_path(root / repo / "graphify-out")
 
 
 def _workspace_paths(root: Path) -> list[Path]:

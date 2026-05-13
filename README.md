@@ -36,7 +36,6 @@ It will also:
 - configure local Augment Context Engine with explicit sub-repo workspaces
 - configure remote Augment Context Engine for GitHub-based cross-repo context
 - run Context7 setup for OpenCode
-- clean up legacy graphify/mempalace/engram state
 
 ### 3. Configure staging credentials
 ```bash
@@ -92,8 +91,6 @@ Github-Configo/
 │   ├── setup.bat             # Clone all repos (Windows)
 │   ├── bootstrap.sh          # Legacy bootstrap helper (Linux/Mac)
 │   ├── bootstrap.bat         # Legacy bootstrap helper (Windows)
-│   ├── update-graph.sh       # Legacy helper kept only for migration messaging
-│   ├── update-graph.bat      # Legacy helper kept only for migration messaging
 │   ├── dev.sh                # Start all servers (Linux/Mac)
 │   └── dev.bat               # Start all servers (Windows)
 ├── tools/
@@ -121,4 +118,4 @@ Github-Configo/
 - Frontends use their own `.env` files for Supabase configuration
 - All servers run in background; press `Ctrl+C` in the dev script terminal to stop all
 - `configo-knowledge` is no longer part of setup; the main repo is now the source of truth for docs and knowledge tooling
-- Augment Context Engine MCP in OpenCode is now the preferred context layer instead of the old graphify/memory bootstrap flow
+- Augment Context Engine MCP in OpenCode is now the preferred context layer for workspace code retrieval

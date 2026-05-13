@@ -93,7 +93,7 @@ else
 fi
 
 echo ""
-echo "  Configuring OpenCode and cleaning legacy graphify/mempalace state..."
+echo "  Configuring OpenCode..."
 python3 "$ROOT/tools/setup_opencode.py" configure --root "$ROOT"
 echo "  ✓ OpenCode configured"
 
