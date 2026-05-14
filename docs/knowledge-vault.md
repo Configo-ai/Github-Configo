@@ -33,7 +33,7 @@ Setup installerer og konfigurerer automatisk:
 
 Augment sættes op i en hybrid model:
 - Lokal MCP til live workspace-ændringer og upush’et kode
-- Remote MCP til GitHub-org og cross-repo kontekst via Augment GitHub App
+- Remote MCP til GitHub-org og cross-repo kontekst via Augment GitHub App, men det tilføjes manuelt fra Augments MCP-konfigurationsside
 
 ## Hvad der synkroniseres via git
 
@@ -51,6 +51,8 @@ auggie login
 ```
 
 Derefter:
+- åbn `https://app.augmentcode.com/mcp/configuration` og vælg OpenCode remote MCP-konfigurationen
 - installer Augment GitHub App på organisationen
 - vælg Configo-repos i Augment til remote indeksering
-- åbn OpenCode og bekræft at både `augment-context-engine-local` og `augment-context-engine-remote` står som enabled
+- tilføj og autentificer remote MCP i OpenCode med Augments genererede config
+- åbn OpenCode og bekræft at `augment-context-engine-local` står som enabled

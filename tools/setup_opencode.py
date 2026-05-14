@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 from pathlib import Path
 
-DEFAULT_REMOTE_MCP_URL = os.environ.get(
-    "AUGMENT_REMOTE_MCP_URL",
-    "https://api.augmentcode.com/mcp",
-)
 LEGACY_LOCAL_MCP_NAME = "augment-context-engine"
 LOCAL_MCP_NAME = "augment-context-engine-local"
 REMOTE_MCP_NAME = "augment-context-engine-remote"
@@ -116,13 +111,9 @@ def configure_opencode(root: Path) -> None:
     )
     mcp[LOCAL_MCP_NAME] = local_server
 
-    remote_server = {}
-    if isinstance(mcp.get(REMOTE_MCP_NAME), dict):
-        remote_server.update(mcp[REMOTE_MCP_NAME])
-    remote_server.setdefault("type", "remote")
-    remote_server.setdefault("url", DEFAULT_REMOTE_MCP_URL)
-    remote_server.setdefault("enabled", True)
-    mcp[REMOTE_MCP_NAME] = remote_server
+    # Remote Augment MCP is tenant/auth specific and must be added manually
+    # from app.augmentcode.com/mcp/configuration.
+    mcp.pop(REMOTE_MCP_NAME, None)
 
     plugin_path = opencode_dir / "node_modules" / "superpowers"
     plugins = list(config.get("plugin", []))

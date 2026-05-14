@@ -34,7 +34,6 @@ It will also:
 - install Auggie CLI
 - install Superpowers for OpenCode
 - configure local Augment Context Engine with explicit sub-repo workspaces
-- configure remote Augment Context Engine for GitHub-based cross-repo context
 - run Context7 setup for OpenCode
 
 ### 3. Configure staging credentials
@@ -104,7 +103,7 @@ Github-Configo/
 
 - OpenCode is installed by `scripts/setup.sh` / `scripts/setup.bat`
 - Augment Context Engine local MCP is configured as the primary multi-repo code context tool
-- Augment Context Engine remote MCP is configured alongside it for GitHub-org cross-repo lookups
+- Augment Context Engine remote MCP must be added manually from Augment's MCP configuration page
 - Superpowers is installed as an OpenCode plugin
 - Context7 is set up for library/docs lookups
 - OpenCode discovers skills from `~/.agents/skills`, `.agents/skills/`, `~/.claude/skills`, and `.claude/skills`
@@ -113,6 +112,7 @@ Github-Configo/
 
 - You do not need to convert the nested Configo repos to git submodules for Augment to work
 - The local Augment MCP uses `--add-workspace` for each cloned repo, so gitignored nested repos are still indexed as separate workspaces
+- The remote Augment MCP should be added manually from [Augment MCP configuration](https://app.augmentcode.com/mcp/configuration), because the final config is tenant/auth specific
 - The remote Augment MCP requires the Augment GitHub App plus repo selection in Augment before cross-repo retrieval works
 - Backend runs with staging Supabase credentials from `Configo-Backend/.env.staging`
 - Frontends use their own `.env` files for Supabase configuration
