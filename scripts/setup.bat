@@ -59,11 +59,12 @@ if errorlevel 1 (
 )
 
 echo.
-echo   Installing claude-opencode launcher globally...
+echo   Installing global wrappers...
 for /f "tokens=*" %%i in ('npm prefix -g 2^>nul') do set NPM_BIN=%%i
 if defined NPM_BIN (
     copy /Y "%SCRIPT_DIR%claude-opencode.bat" "%NPM_BIN%\claude-opencode.bat" >nul
-    echo   [OK] claude-opencode installed to %NPM_BIN%
+    copy /Y "%SCRIPT_DIR%qmd.cmd" "%NPM_BIN%\qmd.cmd" >nul
+    echo   [OK] claude-opencode + qmd wrapper installed to %NPM_BIN%
 ) else (
     echo   [WARN] Could not determine npm global bin directory
 )
@@ -100,7 +101,7 @@ if errorlevel 1 (
 
 echo.
 echo   Launching setup wizard...
-python "%ROOT%\tools\setup_workspace.py" --root "%ROOT%" wizard
+python "%ROOT%\tools\setup_workspace.py" --root "%ROOT%" wizard --yes
 if errorlevel 1 exit /b 1
 
 echo.

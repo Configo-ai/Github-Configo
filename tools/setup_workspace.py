@@ -272,7 +272,7 @@ def apply_setup(root: Path, *, configure_meridian_plugin: bool, configure_qmd_co
     _panel("Setup Applied", lines)
 
 
-def wizard(root: Path) -> int:
+def wizard(root: Path, *, yes: bool = False) -> int:
     existing_repos = _existing_repo_specs(root)
     repo_summary = [f"{repo.alias:<20} {_repo_dir(root, repo).name}" for repo in existing_repos]
     _panel(
@@ -289,6 +289,11 @@ def wizard(root: Path) -> int:
             *(repo_summary or ["No cloned repos detected yet."]),
         ],
     )
+
+    if yes:
+        print("  Running with --yes, applying all defaults.")
+        apply_setup(root, configure_meridian_plugin=True, configure_qmd_collections=True, install_hooks=True)
+        return 0
 
     do_config = _ask_yes_no("Configure OpenCode, QMD, Meridian, and worktree helpers now?", True)
     if not do_config:
@@ -413,12 +418,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("wizard")
+    wizard_parser = subparsers.add_parser("wizard")
+    wizard_parser.add_argument("--yes", action="store_true")
     subparsers.add_parser("doctor")
 
     apply_parser = subparsers.add_parser("apply")
     apply_parser.add_argument("--skip-meridian", action="store_true")
     apply_parser.add_argument("--skip-qmd", action="store_true")
+    apply_parser.add_argument("--skip-hooks", action="store_true")
 
     worktree = subparsers.add_parser("worktree")
     worktree_sub = worktree.add_subparsers(dest="worktree_command", required=True)
@@ -447,7 +454,7 @@ def main() -> int:
     root = Path(args.root).resolve()
 
     if args.command == "wizard":
-        return wizard(root)
+        return wizard(root, yes=getattr(args, "yes", False))
     if args.command == "doctor":
         return doctor(root)
     if args.command == "apply":
@@ -455,6 +462,7 @@ def main() -> int:
             root,
             configure_meridian_plugin=not args.skip_meridian,
             configure_qmd_collections=not args.skip_qmd,
+            install_hooks=not args.skip_hooks,
         )
         return 0
     if args.command == "worktree":

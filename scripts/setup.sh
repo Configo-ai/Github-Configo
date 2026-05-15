@@ -126,7 +126,7 @@ fi
 
 echo ""
 echo "  Launching setup wizard..."
-python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" wizard
+python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" wizard --yes
 
 echo ""
 echo "  Setup complete!"
