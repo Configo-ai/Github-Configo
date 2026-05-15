@@ -1,6 +1,12 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+set WIZARD_FLAGS=
+for %%A in (%*) do (
+    if "%%A"=="--yes" set WIZARD_FLAGS=--yes
+    if "%%A"=="--non-interactive" set WIZARD_FLAGS=--yes
+)
+
 echo.
 echo   Configo Workspace Setup
 echo   %time%
@@ -110,7 +116,7 @@ if errorlevel 1 (
 
 echo.
 echo   Launching setup wizard...
-python "%ROOT%\tools\setup_workspace.py" --root "%ROOT%" wizard --yes
+python "%ROOT%\tools\setup_workspace.py" --root "%ROOT%" wizard %WIZARD_FLAGS%
 if errorlevel 1 exit /b 1
 
 echo.

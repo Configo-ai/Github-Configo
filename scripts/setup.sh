@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 
+WIZARD_FLAGS=""
+for arg in "$@"; do
+  if [[ "$arg" == "--yes" || "$arg" == "--non-interactive" ]]; then
+    WIZARD_FLAGS="--yes"
+  fi
+done
+
 if [[ "$(uname)" == "Darwin" ]]; then
   OPENCODE_CONFIG_DIR="$HOME/Library/Application Support/opencode"
   if [ ! -d "$OPENCODE_CONFIG_DIR" ] && [ -d "$HOME/.config/opencode" ]; then
@@ -141,7 +148,7 @@ fi
 
 echo ""
 echo "  Launching setup wizard..."
-python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" wizard --yes
+python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" wizard $WIZARD_FLAGS
 
 echo ""
 echo "  Setup complete!"
