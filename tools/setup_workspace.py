@@ -37,9 +37,12 @@ REPOS: tuple[RepoSpec, ...] = (
     RepoSpec("deployment", "Configo-Deployment", "main", "deployment"),
 )
 
-KNOWLEDGE_COLLECTIONS: tuple[tuple[str, str, str], ...] = tuple(
-    (f"knowledge-{spec.alias}", spec.directory, "**/*.md")
-    for spec in REPOS
+KNOWLEDGE_COLLECTIONS: tuple[tuple[str, str, str], ...] = (
+    *(
+        (f"knowledge-{spec.alias}", spec.directory, "**/*.md")
+        for spec in REPOS
+    ),
+    ("knowledge-configo", ".", "**/*.md"),
 )
 
 
