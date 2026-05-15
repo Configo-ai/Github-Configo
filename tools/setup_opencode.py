@@ -13,9 +13,19 @@ def _cmd(name: str) -> str:
 
 
 def _opencode_config_dir() -> Path:
-    if platform.system() == "Windows":
+    system = platform.system()
+    if system == "Windows":
         appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
         return Path(appdata) / "opencode"
+    if system == "Darwin":
+        candidates = [
+            Path.home() / "Library" / "Application Support" / "opencode",
+            Path.home() / ".config" / "opencode",
+        ]
+        for c in candidates:
+            if c.exists():
+                return c
+        return candidates[0]
     return Path.home() / ".config" / "opencode"
 
 AUGGIE_MCP_NAME = "auggie"

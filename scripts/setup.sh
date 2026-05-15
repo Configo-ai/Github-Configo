@@ -4,6 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 
+if [[ "$(uname)" == "Darwin" ]]; then
+  OPENCODE_CONFIG_DIR="$HOME/Library/Application Support/opencode"
+  if [ ! -d "$OPENCODE_CONFIG_DIR" ] && [ -d "$HOME/.config/opencode" ]; then
+    OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+  fi
+else
+  OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+fi
+
 install_hint() {
   local package="$1"
   if command -v brew >/dev/null 2>&1; then
@@ -112,8 +121,8 @@ fi
 
 echo ""
 echo "  Installing Superpowers for OpenCode..."
-mkdir -p "$HOME/.config/opencode"
-npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "$HOME/.config/opencode"
+mkdir -p "$OPENCODE_CONFIG_DIR"
+npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "$OPENCODE_CONFIG_DIR"
 echo "  ✓ Superpowers installed"
 
 echo ""
