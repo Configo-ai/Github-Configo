@@ -38,12 +38,10 @@ REPOS: tuple[RepoSpec, ...] = (
 )
 
 KNOWLEDGE_COLLECTIONS: tuple[tuple[str, str, str], ...] = (
-    ("knowledge-backend", "backend", "**/*.md"),
-    ("knowledge-ai-worker", "ai-worker", "**/*.md"),
-    ("knowledge-frontend", "frontend", "**/*.md"),
-    ("knowledge-web-frontend", "web-frontend", "**/*.md"),
-    ("knowledge-developer-frontend", "developer-frontend", "**/*.md"),
-    ("knowledge-deployment", "deployment", "**/*.md"),
+    *(
+        (f"knowledge-{spec.alias}", spec.directory, "**/*.md")
+        for spec in REPOS
+    ),
     ("knowledge-docs", "docs", "**/*.md"),
     ("knowledge-readme", ".", "README.md"),
     ("knowledge-index", ".", "index.md"),
@@ -141,6 +139,12 @@ def _create_task_agents(root: Path, task_dir: Path, repos: list[RepoSpec]) -> No
 
 
 def configure_qmd(root: Path) -> list[str]:
+    init = _run([_cmd("qmd"), "init"], check=False, capture=True)
+    if init.returncode != 0:
+        err = (init.stderr or init.stdout or "").strip()
+        if err:
+            print(f"  [WARN] qmd init: {err}")
+
     configured: list[str] = []
     for name, relative_path, mask in KNOWLEDGE_COLLECTIONS:
         target = (root / relative_path).resolve()
@@ -160,13 +164,14 @@ def configure_qmd(root: Path) -> list[str]:
                     mask,
                 ],
                 check=False,
+                capture=True,
             )
             if result.returncode != 0:
-                print(f"  [WARN] qmd collection add failed for {name}, skipping")
+                err = (result.stderr or result.stdout or "").strip()
+                print(f"  [WARN] qmd collection add failed for {name}: {err}")
                 continue
         configured.append(name)
-    if configured:
-        _run([_cmd("qmd"), "update"], check=False)
+    _run([_cmd("qmd"), "update"], check=False)
     return configured
 
 

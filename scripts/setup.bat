@@ -47,6 +47,16 @@ call :ensure_npm_global "opencode-ai@1.14.35" "opencode"
 call :ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 call :ensure_npm_global "@tobilu/qmd" "qmd"
 call :ensure_npm_global "@rynfar/meridian" "meridian" "--ignore-scripts"
+call :ensure_npm_global "bun" "bun"
+
+echo.
+echo   Installing oh-my-openagent (ultrawork)...
+call bunx oh-my-openagent install --no-tui --claude=yes --openai=no --gemini=no --copilot=no --skip-auth
+if errorlevel 1 (
+    echo   [WARN] oh-my-openagent install failed - run manually: bunx oh-my-openagent install
+) else (
+    echo   [OK] oh-my-openagent ready
+)
 
 echo.
 echo   Installing claude-opencode launcher globally...
@@ -99,7 +109,7 @@ echo   ---------------------------------------------------------
 echo   Next steps:
 echo   1. Run "claude login" if not already authenticated
 echo   2. Launch OpenCode with "claude-opencode" (Meridian starts automatically)
-echo   3. Or use "scripts\opencode.bat" which calls claude-opencode
+echo   3. In OpenCode, run /init-deep to generate AGENTS.md files across all repos
 echo   4. Use "scripts\ws.bat new <task> frontend backend" for cross-repo worktrees
 echo   5. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
 echo   6. Fill in your staging credentials in Configo-Backend\.env.staging
