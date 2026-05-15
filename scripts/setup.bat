@@ -43,6 +43,15 @@ call :ensure_repo "Configo-Developer-Frontend" "https://github.com/Configo-ai/Co
 call :ensure_repo "Configo-Deployment" "https://github.com/Configo-ai/Configo-Deployment.git"
 
 echo.
+echo   Installing Python MCP SDK...
+pip install --quiet mcp
+if errorlevel 1 (
+    echo   [WARN] pip install mcp failed - ws MCP server may not work
+) else (
+    echo   [OK] mcp installed
+)
+
+echo.
 call :ensure_npm_global "opencode-ai@1.14.35" "opencode"
 call :ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 call :ensure_npm_global "@tobilu/qmd" "qmd"

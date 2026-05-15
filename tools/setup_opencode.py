@@ -12,6 +12,10 @@ def _cmd(name: str) -> str:
     return f"{name}.cmd" if platform.system() == "Windows" else name
 
 
+def _python() -> str:
+    return "python" if platform.system() == "Windows" else "python3"
+
+
 def _opencode_config_dir() -> Path:
     system = platform.system()
     if system == "Windows":
@@ -31,6 +35,7 @@ def _opencode_config_dir() -> Path:
 AUGGIE_MCP_NAME = "auggie"
 _LEGACY_MCP_NAMES = ("augment-context-engine", "augment-context-engine-local")
 QMD_MCP_NAME = "qmd-knowledge"
+WS_MCP_NAME = "configo-ws"
 REMOTE_MCP_NAME = "augment-context-engine-remote"
 MERIDIAN_BASE_URL = "http://127.0.0.1:3456"
 
@@ -126,6 +131,11 @@ def configure_claude_code(root: Path) -> None:
         "command": _cmd("qmd"),
         "args": ["mcp"],
     }
+    ws_script = str(root / "tools" / "ws_mcp.py")
+    mcp_servers[WS_MCP_NAME] = {
+        "command": _python(),
+        "args": [ws_script, "--root", str(root)],
+    }
 
     opencode_config = _load_json(_opencode_config_dir() / "opencode.json")
     ctx7 = opencode_config.get("mcp", {}).get("context7")
@@ -165,6 +175,12 @@ def configure_opencode(root: Path, *, use_meridian: bool = True) -> None:
         "command": [_cmd("qmd"), "mcp"],
         "enabled": True,
     }
+    ws_script = str(root / "tools" / "ws_mcp.py")
+    mcp[WS_MCP_NAME] = {
+        "type": "local",
+        "command": [_python(), ws_script, "--root", str(root)],
+        "enabled": True,
+    }
     mcp.pop(REMOTE_MCP_NAME, None)
 
     plugin_path = _opencode_config_dir() / "node_modules" / "superpowers"
@@ -186,7 +202,7 @@ def configure_opencode(root: Path, *, use_meridian: bool = True) -> None:
 
     permission = config.setdefault("permission", {})
     skill_permission = permission.setdefault("skill", {})
-    for pattern in ("impeccable", "caveman*", "superpowers*", "context7"):
+    for pattern in ("impeccable", "caveman*", "superpowers*", "context7", "configo-ws"):
         skill_permission[pattern] = "allow"
 
     _write_json(config_path, config)

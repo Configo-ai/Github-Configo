@@ -55,6 +55,7 @@ require_cmd git
 require_cmd python3
 require_cmd node
 require_cmd npm
+require_cmd pip3
 
 REPOS=(
   "Configo-Backend:https://github.com/Configo-ai/Configo-Backend.git"
@@ -78,6 +79,11 @@ for repo in "${REPOS[@]}"; do
     echo "  ✓ $NAME cloned"
   fi
 done
+
+echo ""
+echo "  Installing Python MCP SDK..."
+pip3 install --quiet mcp
+echo "  ✓ mcp installed"
 
 echo ""
 echo "  Installing OpenCode 1.14.35..."
