@@ -175,6 +175,31 @@ def configure_qmd(root: Path) -> list[str]:
     return configured
 
 
+_POST_COMMIT_HOOK = """\
+#!/bin/sh
+# Re-index qmd knowledge when markdown files are committed
+if git diff-tree --no-commit-id -r --name-only HEAD | grep -q '\\.md$'; then
+  qmd update 2>/dev/null || true
+fi
+"""
+
+
+def install_git_hooks(root: Path) -> list[str]:
+    installed: list[str] = []
+    for spec in REPOS:
+        repo_dir = _repo_dir(root, spec)
+        if not repo_dir.exists():
+            continue
+        hooks_dir = repo_dir / ".git" / "hooks"
+        if not hooks_dir.exists():
+            continue
+        hook_path = hooks_dir / "post-commit"
+        hook_path.write_text(_POST_COMMIT_HOOK, encoding="utf-8")
+        hook_path.chmod(0o755)
+        installed.append(spec.alias)
+    return installed
+
+
 def configure_meridian() -> bool:
     if not shutil.which("meridian"):
         return False
@@ -219,13 +244,16 @@ def _ask_yes_no(prompt: str, default: bool = True) -> bool:
         print("Please answer yes or no.")
 
 
-def apply_setup(root: Path, *, configure_meridian_plugin: bool, configure_qmd_collections: bool) -> None:
+def apply_setup(root: Path, *, configure_meridian_plugin: bool, configure_qmd_collections: bool, install_hooks: bool) -> None:
     setup_opencode.configure_opencode(root, use_meridian=configure_meridian_plugin)
     if configure_meridian_plugin:
         configure_meridian()
     collections: list[str] = []
     if configure_qmd_collections and shutil.which("qmd"):
         collections = configure_qmd(root)
+    hooks: list[str] = []
+    if install_hooks:
+        hooks = install_git_hooks(root)
 
     lines = [
         "OpenCode config updated for:",
@@ -233,11 +261,12 @@ def apply_setup(root: Path, *, configure_meridian_plugin: bool, configure_qmd_co
         "- qmd MCP for knowledge/docs",
         "- Meridian provider base URL",
         "",
-        f"Configured QMD collections: {', '.join(collections) if collections else 'none'}",
+        f"QMD collections: {', '.join(collections) if collections else 'none'}",
+        f"Git hooks installed: {', '.join(hooks) if hooks else 'none'}",
         "",
         "Recommended launch flow:",
-        "- Start Meridian with `meridian`",
-        "- Launch OpenCode via `scripts/opencode.sh` or `scripts\\opencode.bat`",
+        "- Launch OpenCode via `claude-opencode`",
+        "- Run /init-deep once to generate AGENTS.md across all repos",
         "- Use `scripts/ws` / `scripts\\ws.bat` for task worktrees",
     ]
     _panel("Setup Applied", lines)
@@ -268,8 +297,9 @@ def wizard(root: Path) -> int:
 
     do_meridian = _ask_yes_no("Run `meridian setup` and wire OpenCode to local Meridian?", True)
     do_qmd = _ask_yes_no("Register or refresh QMD collections for the knowledge paths?", True)
+    do_hooks = _ask_yes_no("Install post-commit git hook to auto-update QMD on .md changes?", True)
 
-    apply_setup(root, configure_meridian_plugin=do_meridian, configure_qmd_collections=do_qmd)
+    apply_setup(root, configure_meridian_plugin=do_meridian, configure_qmd_collections=do_qmd, install_hooks=do_hooks)
     return 0
 
 
