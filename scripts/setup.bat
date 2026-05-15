@@ -43,25 +43,40 @@ call :ensure_repo "Configo-Developer-Frontend" "https://github.com/Configo-ai/Co
 call :ensure_repo "Configo-Deployment" "https://github.com/Configo-ai/Configo-Deployment.git"
 
 echo.
-where opencode >nul 2>nul
-if errorlevel 1 (
-    echo   Installing OpenCode...
-    call npm install -g opencode-ai
-)
-echo   [OK] OpenCode ready
+call :ensure_npm_global "opencode-ai@1.14.35" "opencode"
+call :ensure_npm_global "@augmentcode/auggie@latest" "auggie"
+call :ensure_npm_global "@tobilu/qmd" "qmd"
+call :ensure_npm_global "@rynfar/meridian" "meridian" "--ignore-scripts"
 
 echo.
-where auggie >nul 2>nul
-if errorlevel 1 (
-    echo   Installing Auggie CLI...
-    call npm install -g @augmentcode/auggie@latest
+echo   Installing claude-opencode launcher globally...
+for /f "tokens=*" %%i in ('npm prefix -g 2^>nul') do set NPM_BIN=%%i
+if defined NPM_BIN (
+    copy /Y "%SCRIPT_DIR%claude-opencode.bat" "%NPM_BIN%\claude-opencode.bat" >nul
+    echo   [OK] claude-opencode installed to %NPM_BIN%
+) else (
+    echo   [WARN] Could not determine npm global bin directory
 )
-echo   [OK] Auggie ready
+
+where claude >nul 2>nul
+if errorlevel 1 (
+    echo   [WARN] Claude Code CLI is not installed. Meridian still needs "claude login" later.
+    goto :after_meridian_setup
+)
+echo.
+echo   Running meridian setup (configures OpenCode plugin)...
+call meridian setup
+if errorlevel 1 (
+    echo   [WARN] meridian setup failed - run manually after "claude login"
+) else (
+    echo   [OK] Meridian plugin configured for OpenCode
+)
+:after_meridian_setup
 
 echo.
-if not exist "%USERPROFILE%\.config\opencode" mkdir "%USERPROFILE%\.config\opencode"
+if not exist "%APPDATA%\opencode" mkdir "%APPDATA%\opencode"
 echo   Installing Superpowers for OpenCode...
-call npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "%USERPROFILE%\.config\opencode"
+call npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "%APPDATA%\opencode"
 echo   [OK] Superpowers ready
 
 echo.
@@ -74,23 +89,21 @@ if errorlevel 1 (
 )
 
 echo.
-echo   Configuring OpenCode...
-python "%ROOT%\tools\setup_opencode.py" configure --root "%ROOT%"
+echo   Launching setup wizard...
+python "%ROOT%\tools\setup_workspace.py" --root "%ROOT%" wizard
 if errorlevel 1 exit /b 1
-echo   [OK] OpenCode configured
 
 echo.
 echo   Setup complete!
 echo   ---------------------------------------------------------
 echo   Next steps:
-echo   1. Run "auggie login" if this machine is not already authenticated
-echo   2. Open https://app.augmentcode.com/mcp/configuration and choose the OpenCode remote MCP config
-echo   3. Install the Augment GitHub App there and select the Configo repos for remote indexing
-echo   4. Add/authenticate the remote MCP in OpenCode using Augment's generated config
-echo   5. Open OpenCode and confirm "augment-context-engine-local" is enabled
-echo   6. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
-echo   7. Fill in your staging credentials in Configo-Backend\.env.staging
-echo   8. Run scripts\dev.bat to start all servers
+echo   1. Run "claude login" if not already authenticated
+echo   2. Launch OpenCode with "claude-opencode" (Meridian starts automatically)
+echo   3. Or use "scripts\opencode.bat" which calls claude-opencode
+echo   4. Use "scripts\ws.bat new <task> frontend backend" for cross-repo worktrees
+echo   5. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
+echo   6. Fill in your staging credentials in Configo-Backend\.env.staging
+echo   7. Run scripts\dev.bat to start all servers
 echo   ---------------------------------------------------------
 echo.
 exit /b 0
@@ -103,5 +116,15 @@ if exist "%~1" (
     git clone %~2
     if errorlevel 1 exit /b 1
     echo   [OK] %~1 cloned
+)
+exit /b 0
+
+:ensure_npm_global
+where %~2 >nul 2>nul
+if errorlevel 1 (
+    echo   Installing %~2...
+    call npm install -g %~1 %~3
+) else (
+    echo   [OK] %~2 ready
 )
 exit /b 0

@@ -25,6 +25,18 @@ require_cmd() {
   fi
 }
 
+ensure_npm_global() {
+  local package="$1"
+  local binary="$2"
+  local extra_flags="${3:-}"
+  if ! command -v "$binary" >/dev/null 2>&1; then
+    echo "  Installing $binary..."
+    npm install -g "$package" $extra_flags
+  else
+    echo "  ✓ $binary already installed"
+  fi
+}
+
 echo ""
 echo "  Configo Workspace Setup"
 echo "  $(date '+%H:%M:%S')"
@@ -35,7 +47,6 @@ require_cmd python3
 require_cmd node
 require_cmd npm
 
-# Repository URLs
 REPOS=(
   "Configo-Backend:https://github.com/Configo-ai/Configo-Backend.git"
   "Configo-AI-Worker:https://github.com/Configo-ai/Configo-AI-Worker.git"
@@ -50,7 +61,6 @@ cd "$ROOT"
 for repo in "${REPOS[@]}"; do
   NAME="${repo%%:*}"
   URL="${repo##*:}"
-  
   if [ -d "$NAME" ]; then
     echo "  ✓ $NAME already exists, skipping"
   else
@@ -61,21 +71,34 @@ for repo in "${REPOS[@]}"; do
 done
 
 echo ""
-echo "  Installing OpenCode..."
-if ! command -v opencode >/dev/null 2>&1; then
-  npm install -g opencode-ai
-  echo "  ✓ OpenCode installed"
-else
-  echo "  ✓ OpenCode already installed"
-fi
+echo "  Installing OpenCode 1.14.35..."
+npm install -g opencode-ai@1.14.35
+echo "  ✓ OpenCode pinned to 1.14.35"
+ensure_npm_global "@augmentcode/auggie@latest" "auggie"
+ensure_npm_global "@tobilu/qmd" "qmd"
+ensure_npm_global "@rynfar/meridian" "meridian" "--ignore-scripts"
 
 echo ""
-echo "  Installing Auggie CLI..."
-if ! command -v auggie >/dev/null 2>&1; then
-  npm install -g @augmentcode/auggie@latest
-  echo "  ✓ Auggie installed"
+echo "  Installing claude-opencode launcher globally..."
+NPM_BIN=$(npm prefix -g 2>/dev/null)/bin
+if [ -n "$NPM_BIN" ]; then
+  cp "$SCRIPT_DIR/claude-opencode.sh" "$NPM_BIN/claude-opencode"
+  chmod +x "$NPM_BIN/claude-opencode"
+  echo "  ✓ claude-opencode installed to $NPM_BIN"
 else
-  echo "  ✓ Auggie already installed"
+  echo "  ! Could not determine npm global bin directory"
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "  ! Claude Code CLI is not installed. Meridian needs 'claude login' later."
+else
+  echo ""
+  echo "  Running meridian setup (configures OpenCode plugin)..."
+  if meridian setup; then
+    echo "  ✓ Meridian plugin configured for OpenCode"
+  else
+    echo "  ! meridian setup failed - run manually after 'claude login'"
+  fi
 fi
 
 echo ""
@@ -93,21 +116,19 @@ else
 fi
 
 echo ""
-echo "  Configuring OpenCode..."
-python3 "$ROOT/tools/setup_opencode.py" configure --root "$ROOT"
-echo "  ✓ OpenCode configured"
+echo "  Launching setup wizard..."
+python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" wizard
 
 echo ""
 echo "  Setup complete!"
 echo "  ─────────────────────────────────────────────────────────"
 echo "  Next steps:"
-echo "  1. Run 'auggie login' if this machine is not already authenticated"
-echo "  2. Open https://app.augmentcode.com/mcp/configuration and choose the OpenCode remote MCP config"
-echo "  3. Install the Augment GitHub App there and select the Configo repos for remote indexing"
-echo "  4. Add/authenticate the remote MCP in OpenCode using Augment's generated config"
-echo "  5. Open OpenCode and confirm 'augment-context-engine-local' is enabled"
-echo "  6. Copy Configo-Backend/.env.staging.example to Configo-Backend/.env.staging"
-echo "  7. Fill in your staging credentials in Configo-Backend/.env.staging"
-echo "  8. Run ./scripts/dev.sh to start all servers"
+echo "  1. Run 'claude login' if not already authenticated"
+echo "  2. Launch OpenCode with 'claude-opencode' (Meridian starts automatically)"
+echo "  3. Or use './scripts/opencode.sh' which calls claude-opencode"
+echo "  4. Use './scripts/ws new <task> frontend backend' for cross-repo worktrees"
+echo "  5. Copy Configo-Backend/.env.staging.example to Configo-Backend/.env.staging"
+echo "  6. Fill in your staging credentials in Configo-Backend/.env.staging"
+echo "  7. Run ./scripts/dev.sh to start all servers"
 echo "  ─────────────────────────────────────────────────────────"
 echo ""
