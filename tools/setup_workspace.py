@@ -26,15 +26,16 @@ class RepoSpec:
     directory: str
     default_branch: str
     knowledge_dir: str
+    code_mask: str
 
 
 REPOS: tuple[RepoSpec, ...] = (
-    RepoSpec("backend", "Configo-Backend", "main", "backend"),
-    RepoSpec("ai-worker", "Configo-AI-Worker", "main", "ai-worker"),
-    RepoSpec("frontend", "Configo-Frontend", "main", "frontend"),
-    RepoSpec("web-frontend", "Configo-Web-Frontend", "main", "web-frontend"),
-    RepoSpec("developer-frontend", "Configo-Developer-Frontend", "main", "developer-frontend"),
-    RepoSpec("deployment", "Configo-Deployment", "main", "deployment"),
+    RepoSpec("backend", "Configo-Backend", "main", "backend", "**/*.py"),
+    RepoSpec("ai-worker", "Configo-AI-Worker", "main", "ai-worker", "**/*.py"),
+    RepoSpec("frontend", "Configo-Frontend", "main", "frontend", "**/*.ts"),
+    RepoSpec("web-frontend", "Configo-Web-Frontend", "main", "web-frontend", "**/*.ts"),
+    RepoSpec("developer-frontend", "Configo-Developer-Frontend", "main", "developer-frontend", "**/*.ts"),
+    RepoSpec("deployment", "Configo-Deployment", "main", "deployment", "**/*.yaml"),
 )
 
 KNOWLEDGE_COLLECTIONS: tuple[tuple[str, str, str], ...] = (
@@ -42,9 +43,10 @@ KNOWLEDGE_COLLECTIONS: tuple[tuple[str, str, str], ...] = (
         (f"knowledge-{spec.alias}", spec.directory, "**/*.md")
         for spec in REPOS
     ),
-    ("knowledge-docs", "docs", "**/*.md"),
-    ("knowledge-readme", ".", "README.md"),
-    ("knowledge-index", ".", "index.md"),
+    *(
+        (f"code-{spec.alias}", spec.directory, spec.code_mask)
+        for spec in REPOS
+    ),
 )
 
 
