@@ -17,29 +17,10 @@ set ROOT=%SCRIPT_DIR%..
 
 cd /d "%ROOT%"
 
-where git >nul 2>nul
-if errorlevel 1 (
-    echo   [ERROR] Git is required
-    exit /b 1
-)
-
-where python >nul 2>nul
-if errorlevel 1 (
-    echo   [ERROR] Python is required
-    exit /b 1
-)
-
-where node >nul 2>nul
-if errorlevel 1 (
-    echo   [ERROR] Node.js is required
-    exit /b 1
-)
-
-where npm >nul 2>nul
-if errorlevel 1 (
-    echo   [ERROR] npm is required
-    exit /b 1
-)
+where git >nul 2>nul || (echo   [ERROR] Git is required& exit /b 1)
+where python >nul 2>nul || (echo   [ERROR] Python is required& exit /b 1)
+where node >nul 2>nul || (echo   [ERROR] Node.js is required& exit /b 1)
+where npm >nul 2>nul || (echo   [ERROR] npm is required& exit /b 1)
 
 call :ensure_repo "Configo-Backend" "https://github.com/Configo-ai/Configo-Backend.git"
 call :ensure_repo "Configo-AI-Worker" "https://github.com/Configo-ai/Configo-AI-Worker.git"
@@ -57,53 +38,41 @@ if errorlevel 1 (
     echo   [OK] mcp installed
 )
 
+for /f "tokens=*" %%i in ('python -c "import json, pathlib; print(json.loads(pathlib.Path(r'tools/workspace_runtime.yaml').read_text())['opencode_version'])"') do set OPENCODE_VERSION=%%i
 echo.
-call :ensure_npm_global "opencode-ai@1.14.35" "opencode"
+echo   Installing OpenCode %OPENCODE_VERSION%...
+call npm install -g opencode-ai@%OPENCODE_VERSION%
+if errorlevel 1 exit /b 1
+echo   [OK] OpenCode pinned
 call :ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 call :ensure_npm_global "@tobilu/qmd" "qmd"
-call :ensure_npm_global "@rynfar/meridian" "meridian" "--ignore-scripts"
-call :ensure_npm_global "bun" "bun"
 
 echo.
-echo   Installing oh-my-openagent (ultrawork)...
-call bunx oh-my-openagent install --no-tui --claude=yes --openai=no --gemini=no --copilot=no --skip-auth
+where kimi >nul 2>nul
 if errorlevel 1 (
-    echo   [WARN] oh-my-openagent install failed - run manually: bunx oh-my-openagent install
+    echo   Installing Kimi Code CLI via uv...
+    where uv >nul 2>nul || (
+        echo   Installing uv...
+        pip install --quiet --user uv
+    )
+    call uv tool install --python 3.13 kimi-cli
+    if errorlevel 1 (
+        echo   [WARN] Kimi CLI install failed - run `uv tool install --python 3.13 kimi-cli` manually
+    ) else (
+        echo   [OK] kimi installed - run `kimi` then `/login` to authenticate
+    )
 ) else (
-    echo   [OK] oh-my-openagent ready
+    echo   [OK] kimi already installed
 )
 
 echo.
-echo   Setting Anthropic proxy environment variables...
-setx ANTHROPIC_API_KEY "x" >nul
-setx ANTHROPIC_BASE_URL "http://127.0.0.1:3456" >nul
-echo   [OK] ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL set permanently
+echo   Applying local qmd patches (qmd.cmd shim + QMD_LLAMA_GPU=vulkan support)...
+python "%ROOT%\tools\patch_qmd.py"
 
 echo.
-echo   Installing global wrappers...
-for /f "tokens=*" %%i in ('npm prefix -g 2^>nul') do set NPM_BIN=%%i
-if defined NPM_BIN (
-    copy /Y "%SCRIPT_DIR%claude-opencode.bat" "%NPM_BIN%\claude-opencode.bat" >nul
-    copy /Y "%SCRIPT_DIR%qmd.cmd" "%NPM_BIN%\qmd.cmd" >nul
-    echo   [OK] claude-opencode + qmd wrapper installed to %NPM_BIN%
-) else (
-    echo   [WARN] Could not determine npm global bin directory
-)
-
-where claude >nul 2>nul
-if errorlevel 1 (
-    echo   [WARN] Claude Code CLI is not installed. Meridian still needs "claude login" later.
-    goto :after_meridian_setup
-)
-echo.
-echo   Running meridian setup (configures OpenCode plugin)...
-call meridian setup
-if errorlevel 1 (
-    echo   [WARN] meridian setup failed - run manually after "claude login"
-) else (
-    echo   [OK] Meridian plugin configured for OpenCode
-)
-:after_meridian_setup
+echo   Setting QMD_LLAMA_GPU=vulkan (avoids CUDA 12/13 ABI mismatch in qmd's prebuilt binary)...
+setx QMD_LLAMA_GPU vulkan >nul
+echo   [OK] QMD_LLAMA_GPU persisted
 
 echo.
 if not exist "%APPDATA%\opencode" mkdir "%APPDATA%\opencode"
@@ -129,9 +98,9 @@ echo.
 echo   Setup complete!
 echo   ---------------------------------------------------------
 echo   Next steps:
-echo   1. Run "claude login" if not already authenticated
-echo   2. Launch OpenCode with "claude-opencode" (Meridian starts automatically)
-echo   3. In OpenCode, run /init-deep to generate AGENTS.md files across all repos
+echo   1. Run "claude login" if Claude is not authenticated yet
+echo   2. Launch Claude with "scripts\claude-workspace.bat"
+echo   3. Launch OpenCode with "scripts\opencode-workspace.bat"
 echo   4. Use "scripts\ws.bat new <task> frontend backend" for cross-repo worktrees
 echo   5. Copy Configo-Backend\.env.staging.example to Configo-Backend\.env.staging
 echo   6. Fill in your staging credentials in Configo-Backend\.env.staging
@@ -155,7 +124,7 @@ exit /b 0
 where %~2 >nul 2>nul
 if errorlevel 1 (
     echo   Installing %~2...
-    call npm install -g %~1 %~3
+    call npm install -g %~1
 ) else (
     echo   [OK] %~2 ready
 )

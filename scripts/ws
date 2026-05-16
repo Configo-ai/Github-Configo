@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(dirname "$SCRIPT_DIR")"
+
+exec python3 "$ROOT/tools/setup_workspace.py" --root "$ROOT" worktree "$@"

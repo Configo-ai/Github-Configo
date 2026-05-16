@@ -13,3 +13,9 @@ __pycache__/
 *.pyc
 
 .worktrees/
+
+# Sessions are kept locally only — workspace_conversation_id correlation
+# between Claude Code / OpenCode still works, but conversation bodies and
+# metadata are not committed (false-positive retrieval risk + privacy).
+sessions/
+.sessions-archive/

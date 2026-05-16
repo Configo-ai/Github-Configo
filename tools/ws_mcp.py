@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from mcp.server.fastmcp import FastMCP
+import session_runtime
 import setup_workspace as ws
 
 _mcp = FastMCP("configo-ws")
@@ -15,9 +16,9 @@ _root: Path = Path(__file__).resolve().parents[1]
 
 @_mcp.tool()
 def worktree_new(task: str, repos: list[str]) -> str:
-    """Create cross-repo git worktrees for a task. repos is a list of aliases e.g. ['backend', 'frontend']."""
+    """Create cross-repo git worktrees for a task. repos is a list of aliases e.g. ['backend', 'frontend'].""" 
     try:
-        specs = ws._repo_specs_for_args(repos)
+        specs = ws._repo_specs_for_args(_root, repos)
     except SystemExit as e:
         return f"Error: {e}"
 
@@ -27,7 +28,7 @@ def worktree_new(task: str, repos: list[str]) -> str:
     errors: list[str] = []
 
     for spec in specs:
-        repo_dir = ws._repo_dir(_root, spec)
+        repo_dir = _root / spec.directory
         if not (repo_dir / ".git").exists():
             errors.append(f"{spec.alias}: repo not found at {repo_dir}")
             continue
@@ -107,8 +108,8 @@ def worktree_remove(task: str) -> str:
         if not repo_dir.is_dir():
             continue
         try:
-            specs = ws._repo_specs_for_args([repo_dir.name])
-            main_repo = ws._repo_dir(_root, specs[0])
+            specs = ws._repo_specs_for_args(_root, [repo_dir.name])
+            main_repo = _root / specs[0].directory
             if (main_repo / ".git").exists():
                 ws._run(["git", "worktree", "remove", str(repo_dir)], cwd=main_repo)
                 removed.append(repo_dir.name)
@@ -127,6 +128,29 @@ def worktree_remove(task: str) -> str:
     if errors:
         parts.append(f"Errors: {'; '.join(errors)}")
     return "\n".join(parts) or f"Removed worktree '{task}'"
+
+
+@_mcp.tool()
+def conversation_list(scope_only: bool = False) -> str:
+    """List shared workspace conversations with ids, names, repos, and last update time."""
+    items = session_runtime.list_conversations(_root, _root, scope_only)
+    if not items:
+        return "No conversations found."
+    lines: list[str] = []
+    for item in items:
+        repos = ", ".join(item.get("repos", [])) or "none"
+        worktree = item.get("worktree") or "-"
+        lines.append(
+            f"{item['workspace_conversation_id']} | {item['title']} | repos: {repos} | worktree: {worktree} | updated: {item['updated_at']}"
+        )
+    return "\n".join(lines)
+
+
+@_mcp.tool()
+def conversation_activate(conversation_id: str) -> str:
+    """Set the active shared workspace conversation for the current workspace scope."""
+    payload = session_runtime.activate(_root, _root, conversation_id)
+    return f"Active conversation for {payload['scope_key']}: {payload['title']} ({payload['workspace_conversation_id']})"
 
 
 def main() -> None:

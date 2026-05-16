@@ -1,2 +1,3 @@
 @echo off
-claude-opencode %*
+setlocal
+call "%~dp0opencode-workspace.bat" %*

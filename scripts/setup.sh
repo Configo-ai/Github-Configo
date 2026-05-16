@@ -11,15 +11,6 @@ for arg in "$@"; do
   fi
 done
 
-if [[ "$(uname)" == "Darwin" ]]; then
-  OPENCODE_CONFIG_DIR="$HOME/Library/Application Support/opencode"
-  if [ ! -d "$OPENCODE_CONFIG_DIR" ] && [ -d "$HOME/.config/opencode" ]; then
-    OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
-  fi
-else
-  OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
-fi
-
 install_hint() {
   local package="$1"
   if command -v brew >/dev/null 2>&1; then
@@ -44,10 +35,9 @@ require_cmd() {
 ensure_npm_global() {
   local package="$1"
   local binary="$2"
-  local extra_flags="${3:-}"
   if ! command -v "$binary" >/dev/null 2>&1; then
     echo "  Installing $binary..."
-    npm install -g "$package" $extra_flags
+    npm install -g "$package"
   else
     echo "  ✓ $binary already installed"
   fi
@@ -93,62 +83,51 @@ pip3 install --quiet mcp
 echo "  ✓ mcp installed"
 
 echo ""
-echo "  Installing OpenCode 1.14.35..."
-npm install -g opencode-ai@1.14.35
-echo "  ✓ OpenCode pinned to 1.14.35"
+echo "  Installing OpenCode $(python3 - <<'PY'
+from pathlib import Path
+import json
+print(json.loads((Path('tools/workspace_runtime.yaml')).read_text())['opencode_version'])
+PY
+)..."
+npm install -g "opencode-ai@$(python3 - <<'PY'
+from pathlib import Path
+import json
+print(json.loads((Path('tools/workspace_runtime.yaml')).read_text())['opencode_version'])
+PY
+)"
+echo "  ✓ OpenCode pinned"
 ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 ensure_npm_global "@tobilu/qmd" "qmd"
-ensure_npm_global "@rynfar/meridian" "meridian" "--ignore-scripts"
-ensure_npm_global "bun" "bun"
 
 echo ""
-echo "  Installing oh-my-openagent (ultrawork)..."
-if bunx oh-my-openagent install --no-tui --claude=yes --openai=no --gemini=no --copilot=no --skip-auth; then
-  echo "  ✓ oh-my-openagent ready"
+if command -v kimi >/dev/null 2>&1; then
+  echo "  ✓ kimi already installed"
 else
-  echo "  ! oh-my-openagent install failed - run manually: bunx oh-my-openagent install"
-fi
-
-echo ""
-echo "  Setting Anthropic proxy environment variables..."
-PROFILE_FILE="$HOME/.zshrc"
-[ -f "$HOME/.bashrc" ] && PROFILE_FILE="$HOME/.bashrc"
-for var_line in \
-  'export ANTHROPIC_API_KEY=x' \
-  'export ANTHROPIC_BASE_URL=http://127.0.0.1:3456'; do
-  var_name="${var_line#export }"
-  var_name="${var_name%%=*}"
-  if ! grep -q "export ${var_name}=" "$PROFILE_FILE" 2>/dev/null; then
-    echo "$var_line" >> "$PROFILE_FILE"
+  echo "  Installing Kimi Code CLI via uv..."
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "  Installing uv..."
+    pip3 install --quiet --user uv
+    # uv's user-install scripts dir may not be on PATH yet in this shell.
+    USER_BIN="$(python3 -m site --user-base 2>/dev/null)/bin"
+    [ -d "$USER_BIN" ] && export PATH="$USER_BIN:$PATH"
   fi
-done
-echo "  ✓ ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL added to $PROFILE_FILE"
-
-echo ""
-echo "  Installing claude-opencode launcher globally..."
-NPM_BIN=$(npm prefix -g 2>/dev/null)/bin
-if [ -n "$NPM_BIN" ]; then
-  cp "$SCRIPT_DIR/claude-opencode.sh" "$NPM_BIN/claude-opencode"
-  chmod +x "$NPM_BIN/claude-opencode"
-  echo "  ✓ claude-opencode installed to $NPM_BIN"
-else
-  echo "  ! Could not determine npm global bin directory"
-fi
-
-if ! command -v claude >/dev/null 2>&1; then
-  echo "  ! Claude Code CLI is not installed. Meridian needs 'claude login' later."
-else
-  echo ""
-  echo "  Running meridian setup (configures OpenCode plugin)..."
-  if meridian setup; then
-    echo "  ✓ Meridian plugin configured for OpenCode"
+  if uv tool install --python 3.13 kimi-cli; then
+    echo "  ✓ kimi installed - run \`kimi\` then \`/login\` to authenticate"
   else
-    echo "  ! meridian setup failed - run manually after 'claude login'"
+    echo "  ! Kimi CLI install failed - run \`uv tool install --python 3.13 kimi-cli\` manually"
   fi
 fi
+
+echo ""
+echo "  Applying local qmd patches (QMD_LLAMA_GPU=vulkan/metal/cuda support)..."
+python3 "$ROOT/tools/patch_qmd.py"
 
 echo ""
 echo "  Installing Superpowers for OpenCode..."
+OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+if [[ "$(uname)" == "Darwin" ]]; then
+  OPENCODE_CONFIG_DIR="$HOME/Library/Application Support/opencode"
+fi
 mkdir -p "$OPENCODE_CONFIG_DIR"
 npm install "superpowers@git+https://github.com/obra/superpowers.git" --prefix "$OPENCODE_CONFIG_DIR"
 echo "  ✓ Superpowers installed"
@@ -169,10 +148,10 @@ echo ""
 echo "  Setup complete!"
 echo "  ─────────────────────────────────────────────────────────"
 echo "  Next steps:"
-echo "  1. Run 'claude login' if not already authenticated"
-echo "  2. Launch OpenCode with 'claude-opencode' (Meridian starts automatically)"
-echo "  3. In OpenCode, run /init-deep to generate AGENTS.md files across all repos"
-echo "  4. Use './scripts/ws new <task> frontend backend' for cross-repo worktrees"
+echo "  1. Run 'claude login' if Claude is not authenticated yet"
+echo "  2. Launch Claude with 'bash scripts/claude-workspace.sh'"
+echo "  3. Launch OpenCode with 'bash scripts/opencode-workspace.sh'"
+echo "  4. Use 'bash scripts/ws new <task> frontend backend' for cross-repo worktrees"
 echo "  5. Copy Configo-Backend/.env.staging.example to Configo-Backend/.env.staging"
 echo "  6. Fill in your staging credentials in Configo-Backend/.env.staging"
 echo "  7. Run ./scripts/dev.sh to start all servers"

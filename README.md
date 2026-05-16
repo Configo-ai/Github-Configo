@@ -1,6 +1,6 @@
 # Configo Workspace
 
-Multi-repo workspace for Configo development with integrated docs, Augment MCP context, OpenCode tooling and automatic setup scripts.
+Multi-repo workspace for Configo development with shared Claude Code / OpenCode / Kimi CLI tooling, separate code/docs retrieval, tracked conversation logs, and cross-repo worktree helpers.
 
 ## Quick Start
 
@@ -10,112 +10,193 @@ git clone <workspace-url> Github-Configo
 cd Github-Configo
 ```
 
-### 2. Run setup script
-**Linux/Mac:**
+### 2. Run setup
+Linux/macOS:
 ```bash
-./scripts/setup.sh
+bash scripts/setup.sh
 ```
 
-**Windows:**
+Windows:
 ```cmd
 scripts\setup.bat
 ```
 
-This will clone all Configo repositories:
-- Configo-Backend
-- Configo-AI-Worker
-- Configo-Frontend
-- Configo-Web-Frontend
-- Configo-Developer-Frontend
-- Configo-Deployment
-
-It will also:
-- install OpenCode
-- install Auggie CLI
+Setup will:
+- clone all Configo code repos
+- install `opencode-ai` pinned by `tools/workspace_runtime.yaml`
+- install `@augmentcode/auggie`
+- install `@tobilu/qmd`
 - install Superpowers for OpenCode
-- configure local Augment Context Engine with explicit sub-repo workspaces
-- run Context7 setup for OpenCode
+- configure Context7 for OpenCode
+- generate shared Claude Code / OpenCode / Kimi runtime config from the workspace manifest
+- initialize the local `sessions/` conversation store (gitignored)
 
-### 3. Configure staging credentials
+### 3. Launch the clients
+Claude:
+
+Linux/macOS:
+```bash
+bash scripts/claude-workspace.sh
+```
+
+Windows:
+```cmd
+scripts\claude-workspace.bat
+```
+
+Claude slash command:
+```text
+/cross-resume
+/cross-resume <workspace_conversation_id>
+/cross-resume <workspace_conversation_id> claude
+/cross-resume <workspace_conversation_id> opencode
+```
+
+OpenCode:
+
+Linux/macOS:
+```bash
+bash scripts/opencode-workspace.sh
+```
+
+Windows:
+```cmd
+scripts\opencode-workspace.bat
+```
+
+Cross-client resume:
+
+Linux/macOS:
+```bash
+bash scripts/cross-resume.sh
+bash scripts/cross-resume.sh claude <workspace_conversation_id>
+bash scripts/cross-resume.sh opencode <workspace_conversation_id>
+```
+
+Windows:
+```cmd
+scripts\cross-resume.bat
+scripts\cross-resume.bat claude <workspace_conversation_id>
+scripts\cross-resume.bat opencode <workspace_conversation_id>
+```
+
+App launchers:
+
+Windows:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-windows-launchers.ps1
+```
+
+Linux:
+```bash
+bash scripts/install-linux-launchers.sh
+```
+
+### 4. Configure staging credentials
 ```bash
 cp Configo-Backend/.env.staging.example Configo-Backend/.env.staging
-# Edit Configo-Backend/.env.staging with your staging credentials
 ```
 
-### 4. Start all dev servers
-**Linux/Mac:**
+### 5. Start all dev servers
+Linux/macOS:
 ```bash
-./scripts/dev.sh
+bash scripts/dev.sh
 ```
 
-**Windows:**
+Windows:
 ```cmd
 scripts\dev.bat
 ```
 
-Or via VS Code/Windsurf:
-- `Ctrl+Shift+P` → "Tasks: Run Task" → "Start Dev Servers (Staging)"
+## Context Model
+
+- `auggie` is for live code retrieval only
+- `qmd-knowledge` indexes workspace docs only. Pass `collections: ["knowledge-*"]`
+  (or specific names) to scope a search. Session history is **not** indexed.
+- `context7` is for external framework and library docs
+
+Session bodies are kept locally only (gitignored) — they're not searchable via
+qmd anymore. Cross-client conversation correlation (`/cross-resume`) still works.
+
+## Shared Conversation Runtime
+
+Claude and OpenCode share a workspace-owned conversation layer instead of trying to share one native runtime session ID.
+
+Each shared conversation gets:
+- a `workspace_conversation_id`
+- optional Claude native session ID
+- optional OpenCode native session ID
+- tracked Markdown log under `sessions/`
+
+Conversation logs are stored locally (gitignored) — the workspace correlation layer above is what survives across machines, not the conversation bodies themselves.
+Use `cross-resume` to list human-readable conversation names and bind Claude or OpenCode to the same shared workspace conversation.
+Inside Claude, the workspace also exposes `/cross-resume` via [.claude/commands/cross-resume.md](C:/Users/Lauritz/Documents/GitHub/Github-Configo/.claude/commands/cross-resume.md).
+
+## Worktrees
+
+Use the worktree helper for cross-repo task workspaces:
+
+Linux/macOS:
+```bash
+bash scripts/ws new feature-login frontend backend ai-worker
+bash scripts/ws status feature-login
+bash scripts/ws open feature-login
+bash scripts/ws remove feature-login
+```
+
+Windows:
+```cmd
+scripts\ws.bat new feature-login frontend backend ai-worker
+scripts\ws.bat status feature-login
+scripts\ws.bat open feature-login
+scripts\ws.bat remove feature-login
+```
+
+Task workspaces live under `.worktrees/<task>/`.
 
 ## Server URLs
 
-- **Main Frontend:** http://localhost:8080
-- **Web Frontend:** http://localhost:8081
-- **Developer Frontend:** http://localhost:8082
-- **Backend API:** http://localhost:9090 (or PORT from .env.staging)
+- Main Frontend: `http://localhost:8080`
+- Web Frontend: `http://localhost:8081`
+- Developer Frontend: `http://localhost:8082`
+- Backend API: `http://localhost:9090`
 
 ## Workspace Structure
 
-```
+```text
 Github-Configo/
-├── Configo-AI-Worker/        # AI worker and orchestration service
-├── Configo-Backend/           # Go backend
-├── Configo-Frontend/          # Main React frontend (port 8080)
-├── Configo-Web-Frontend/      # Web frontend (port 8081)
-├── Configo-Developer-Frontend/ # Developer frontend (port 8082)
-├── Configo-Deployment/        # Deployment configs
-├── ai-worker/                 # AI worker knowledge and docs
-├── backend/                   # Backend docs, conventions, context
-├── deployment/                # Deployment docs
-├── developer-frontend/        # Developer frontend docs
-├── frontend/                  # Frontend docs
-├── web-frontend/              # Web frontend docs
-├── hooks/                     # Shared git hooks
-├── patches/                   # Shared patches
-├── .claude/                   # Team Claude config and skills
-├── .obsidian/                 # Shared Obsidian vault metadata
-├── index.md                   # Knowledge index
-├── docs/knowledge-vault.md    # Migrated vault overview
+├── Configo-AI-Worker/
+├── Configo-Backend/
+├── Configo-Deployment/
+├── Configo-Developer-Frontend/
+├── Configo-Frontend/
+├── Configo-Web-Frontend/
+├── ai-worker/
+├── backend/
+├── deployment/
+├── developer-frontend/
+├── docs/
+├── frontend/
+├── sessions/
+├── web-frontend/
+├── .worktrees/
 ├── scripts/
-│   ├── setup.sh              # Clone all repos (Linux/Mac)
-│   ├── setup.bat             # Clone all repos (Windows)
-│   ├── bootstrap.sh          # Legacy bootstrap helper (Linux/Mac)
-│   ├── bootstrap.bat         # Legacy bootstrap helper (Windows)
-│   ├── dev.sh                # Start all servers (Linux/Mac)
-│   └── dev.bat               # Start all servers (Windows)
 ├── tools/
-│   └── setup_opencode.py      # Shared OpenCode setup + cleanup helper
-├── .vscode/
-│   └── tasks.json            # VS Code/Windsurf task configuration
-└── Configo.code-workspace    # VS Code workspace file
+│   ├── runtime_manifest.py
+│   ├── session_runtime.py
+│   ├── setup_agents.py
+│   ├── setup_workspace.py
+│   ├── workspace_launcher.py
+│   └── workspace_runtime.yaml
+├── README.md
+└── AGENTS.md
 ```
-
-## OpenCode
-
-- OpenCode is installed by `scripts/setup.sh` / `scripts/setup.bat`
-- Augment Context Engine local MCP is configured as the primary multi-repo code context tool
-- Augment Context Engine remote MCP must be added manually from Augment's MCP configuration page
-- Superpowers is installed as an OpenCode plugin
-- Context7 is set up for library/docs lookups
-- OpenCode discovers skills from `~/.agents/skills`, `.agents/skills/`, `~/.claude/skills`, and `.claude/skills`
 
 ## Notes
 
-- You do not need to convert the nested Configo repos to git submodules for Augment to work
-- The local Augment MCP uses `--add-workspace` for each cloned repo, so gitignored nested repos are still indexed as separate workspaces
-- The remote Augment MCP should be added manually from [Augment MCP configuration](https://app.augmentcode.com/mcp/configuration), because the final config is tenant/auth specific
-- The remote Augment MCP requires the Augment GitHub App plus repo selection in Augment before cross-repo retrieval works
-- Backend runs with staging Supabase credentials from `Configo-Backend/.env.staging`
-- Frontends use their own `.env` files for Supabase configuration
-- All servers run in background; press `Ctrl+C` in the dev script terminal to stop all
-- `configo-knowledge` is no longer part of setup; the main repo is now the source of truth for docs and knowledge tooling
-- Augment Context Engine MCP in OpenCode is now the preferred context layer for workspace code retrieval
+- setup does not write Anthropic proxy env vars into your shell or Windows profile
+- `qmd` runs as one installation indexing only `knowledge-*` collections (sessions are local-only)
+- `sessions/` is local-only (gitignored) and no longer indexed by qmd; auto-pruned after the retention period in `tools/workspace_runtime.yaml`
+- `context7` remains the external docs channel
+- desktop/app launchers can be installed with `scripts/install-windows-launchers.ps1` or `scripts/install-linux-launchers.sh`
+- qmd defaults to Vulkan on Windows (CUDA 12/13 ABI mismatch in the prebuilt binary). For native CUDA, run `scripts\build-qmd-cuda.bat` after installing VS Build Tools — gives ~3-5x faster embedding/rerank vs Vulkan

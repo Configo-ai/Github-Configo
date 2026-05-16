@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "opencode_version": "1.14.35",
+  "repos": [
+    {
+      "alias": "backend",
+      "directory": "Configo-Backend",
+      "default_branch": "main",
+      "knowledge_path": "backend"
+    },
+    {
+      "alias": "ai-worker",
+      "directory": "Configo-AI-Worker",
+      "default_branch": "main",
+      "knowledge_path": "ai-worker"
+    },
+    {
+      "alias": "frontend",
+      "directory": "Configo-Frontend",
+      "default_branch": "main",
+      "knowledge_path": "frontend"
+    },
+    {
+      "alias": "web-frontend",
+      "directory": "Configo-Web-Frontend",
+      "default_branch": "main",
+      "knowledge_path": "web-frontend"
+    },
+    {
+      "alias": "developer-frontend",
+      "directory": "Configo-Developer-Frontend",
+      "default_branch": "main",
+      "knowledge_path": "developer-frontend"
+    },
+    {
+      "alias": "deployment",
+      "directory": "Configo-Deployment",
+      "default_branch": "main",
+      "knowledge_path": "deployment"
+    }
+  ],
+  "qmd": {
+    "knowledge_collections": [
+      {
+        "name": "knowledge-backend",
+        "path": "backend",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-ai-worker",
+        "path": "ai-worker",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-frontend",
+        "path": "frontend",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-web-frontend",
+        "path": "web-frontend",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-developer-frontend",
+        "path": "developer-frontend",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-deployment",
+        "path": "deployment",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-docs",
+        "path": "docs",
+        "mask": "**/*.md"
+      },
+      {
+        "name": "knowledge-readme",
+        "path": ".",
+        "mask": "README.md"
+      },
+      {
+        "name": "knowledge-index",
+        "path": ".",
+        "mask": "index.md"
+      }
+    ],
+    "conversation_collections": []
+  },
+  "mcp": {
+    "server_names": {
+      "auggie": "auggie",
+      "qmd_knowledge": "qmd-knowledge",
+      "ws": "configo-ws",
+      "context7": "context7"
+    }
+  },
+  "skills_allow": [
+    "impeccable",
+    "caveman*",
+    "superpowers*",
+    "context7",
+    "configo-ws"
+  ],
+  "plugins": [
+    "superpowers"
+  ],
+  "session_store": {
+    "directory": "sessions",
+    "index_file": "sessions/index.md",
+    "active_file": "sessions/active.json",
+    "retention_days": 30,
+    "archive_directory": ".sessions-archive"
+  }
+}

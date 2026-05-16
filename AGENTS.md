@@ -2,156 +2,89 @@
 
 ## Architecture
 
-Workspace repo orchestrating 6 sub-repos (gitignored, cloned by setup scripts). Sub-repos are **not** tracked in this repo.
+Workspace repo orchestrating 6 sub-repos. Sub-repos are cloned by setup scripts and are not tracked in this repo.
 
-```
+```text
 Sub-repo                       Knowledge dir (in this repo)
-Configo-Backend              →  backend/
-Configo-AI-Worker            →  ai-worker/
-Configo-Frontend             →  frontend/
-Configo-Web-Frontend         →  web-frontend/
-Configo-Developer-Frontend   →  developer-frontend/
-Configo-Deployment           →  deployment/
+Configo-Backend              -> backend/
+Configo-AI-Worker            -> ai-worker/
+Configo-Frontend             -> frontend/
+Configo-Web-Frontend         -> web-frontend/
+Configo-Developer-Frontend   -> developer-frontend/
+Configo-Deployment           -> deployment/
 ```
 
-- **Backend:** Go 1.22 modular monolith (`github.com/configo-ai/configo-backend`), Supabase DB, multi-tenant via `organization_id`
-- **Frontends (×3):** React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui + Radix UI
-- **Workspace config:** `Configo.code-workspace` (VS Code multi-root)
-- All 3 frontends share the same Supabase instance — backend owns all migrations and edge functions
+## Retrieval Rules
 
-## Knowledge Dirs (read before editing)
+- Use `qmd-knowledge` for repo knowledge (conventions, architecture, process docs).
+  Pass `collections: ["knowledge-*"]` to scope (or list specific ones like
+  `["knowledge-backend", "knowledge-frontend"]`). Conversation history is **not**
+  indexed by qmd anymore — see "Session History" below.
+- Use `auggie` first for live code behavior in the cloned code repos
+- Use `context7` for external framework and library docs
 
-Before making changes in a sub-repo, read from the matching knowledge dir in this repo. All paths below are **relative to the Github-Configo workspace root** — regardless of where the workspace is cloned on disk, the internal structure is always the same.
+Do not mix workspace docs into code retrieval unless explicitly needed.
 
-| Sub-repo | Knowledge dir | Key files |
-|----------|---------------|-----------|
-| Configo-Backend | `backend/` | `context/RULES.md`, `conventions/`, `architecture/`, `api/` |
-| Configo-Frontend | `frontend/` | `context/RULES.md`, `conventions/` |
-| Configo-Web-Frontend | `web-frontend/` | `context/RULES.md`, `conventions/` |
-| Configo-Developer-Frontend | `developer-frontend/` | `context/RULES.md`, `conventions/` |
-| Configo-AI-Worker | `ai-worker/` | `README.md` |
-| Configo-Deployment | `deployment/` | `README.md` |
+## Session History
 
-## Setup & Dev
+Sessions are stored under `sessions/` **locally only** (gitignored). The
+`workspace_conversation_id` correlation between Claude Code and OpenCode still
+works for `/cross-resume`, but session bodies are not committed and not
+searchable via qmd. Old sessions are auto-pruned after the retention period
+configured in `tools/workspace_runtime.yaml` (`session_store.retention_days`).
+
+## Shared Conversation Runtime
+
+- Claude and OpenCode share a workspace-owned `workspace_conversation_id`
+- Their native session IDs are stored as metadata under the same workspace conversation
+- Shared conversation logs live in `sessions/` and are tracked in Git
+
+## Setup & Launch
 
 ```bash
-scripts/setup.sh            # Clone repos, install tooling (Linux/macOS)
-scripts/setup.bat           # Clone repos, install tooling (Windows)
-scripts/dev.bat             # Start all 4 servers (backend + 3 frontends)
-scripts/dev.sh              # Start all 4 servers (Linux/macOS)
+bash scripts/setup.sh
+scripts/setup.bat
+bash scripts/claude-workspace.sh
+scripts/claude-workspace.bat
+bash scripts/opencode-workspace.sh
+scripts/opencode-workspace.bat
+bash scripts/ws
+scripts/ws.bat
+bash scripts/cross-resume.sh
+scripts/cross-resume.bat
+/cross-resume
+scripts/install-linux-launchers.sh
+scripts/install-windows-launchers.ps1
 ```
 
-Backend requires `Configo-Backend/.env.staging` (copy from `.env.staging.example`).
+## Worktrees
 
-Server URLs:
-- Main Frontend: `http://localhost:8080`
-- Web Frontend: `http://localhost:8081`
-- Developer Frontend: `http://localhost:8082`
-- Backend API: `http://localhost:9090` (or `PORT` from `.env.staging`)
+Cross-repo task workspaces live under `.worktrees/<task>/`.
 
-**Always run commands from the relevant sub-repo directory,** not the workspace root.
+Use:
+- `scripts/ws new <task> <repo> [repo...]`
+- `scripts/ws status <task>`
+- `scripts/ws open <task>`
+- `scripts/ws remove <task>`
+- `scripts/cross-resume.*` to list and resume shared workspace conversations across Claude and OpenCode
+- `/cross-resume` inside Claude to browse and activate a shared workspace conversation
 
-### Backend
-
-```bash
-go test ./...                                        # All tests
-go test -run TestNewRouter ./internal/transport/http/  # Route conflict test
-go run ./cmd/api/main.go                             # Start server
-```
-
-### Frontends (all three)
-
-```bash
-npm run dev              # Dev server (Vite)
-npm run build            # Production build
-npm run lint             # ESLint
-npx vitest run           # Tests
-```
-
-Configo-Frontend may have different test setup — check its `package.json`.
-
-## Backend Package Layout
-
-```
-cmd/api/                       # Entry point
-internal/
-  domain/                      # Business logic (tenants, organizations, pricing, quotes, authz)
-  data/                        # Repositories and persistence behavior
-  data/models/                 # Persistence models
-  transport/http/              # HTTP handlers, middleware, router
-  transport/http/response/     # Shared error/response helpers
-  auth/supabase/               # Auth provider
-  integrations/                # Third-party API clients
-  logger/                      # Shared structured logging
-  platform/config/             # Env config loading
-  platform/database/           # Low-level DB plumbing, transaction helpers
-```
+If you are working inside `.worktrees/...`, keep changes scoped there unless explicitly asked otherwise.
 
 ## Critical Rules
 
-### Backend is source of truth
+- Backend is source of truth for business logic, pricing, validation, permissions, and tenant security
+- Thin handlers only in backend
+- Every tenant-scoped query must filter by `organization_id`
+- Use shared loggers and never log secrets or raw personal data
+- Extend existing abstractions instead of duplicating them
 
-Business logic, pricing, validation, permissions, tenant security live in backend only. Frontends do rendering, composition, UI state. If logic affects correctness, it belongs in backend.
+## Feature Flags
 
-### Thin handlers
-
-Handlers parse requests, call domain services, write responses. No domain logic or direct DB access in handlers. Business logic lives in `internal/domain/`.
-
-### Tenant scoping
-
-Every DB query touching tenant data **MUST** filter by `organization_id`. Tenant resolved from JWT — never from headers or query params. `organization_id` = data scope. `tenant` = routing context (hostname). `organization` = business/data ownership.
-
-### API conventions
-
-- `/v1/` prefix, JSON only, `snake_case` field names, plural resource nouns
-- Error envelope: `{ "error": { "code", "message", "details" } }`
-- Use shared `internal/transport/http/response` helpers for all errors
-- Cursor-based pagination (`next_cursor`), never offset-based
-- OpenAPI contract in `openapi/openapi.yaml` — must be updated for every new endpoint
-- Use explicit transport DTOs, never expose raw persistence structs as HTTP contract
-
-### Logging
-
-Use shared `internal/logger` wrapper. `Debug()` only when `APP_ENV=staging` AND `DEBUG=true`. Never log tokens, passwords, cookies, auth headers, or raw personal data.
-
-### DRY mandate
-
-Before writing new code, check if existing hooks, components, services, DTOs, or helpers already cover the need. Extend rather than duplicate.
-
-## Feature Flags (All Frontends)
-
-Every new feature (pages, routes, major UI) **MUST** be wrapped in `<FeatureFlag>` before merging to staging. Bug fixes and refactors skip flags.
-
-```tsx
-<FeatureFlag flag="dev-my-feature" fallback={<Old />}>
-  <New />
-</FeatureFlag>
-```
-
-Flag naming: kebab-case with `dev-` prefix. Requires a backend migration to insert the flag (disabled by default).
-
-## Testing Priority (Backend)
-
-Test in this order (highest blast radius first):
-1. Tenant resolution (wrong org = data leak)
-2. Authorization checks
-3. Pricing and validation
-4. Repository tenant scoping
-
-Route conflict test (`TestNewRouter_NoRouteConflicts`) catches Go 1.22+ ServeMux pattern ambiguity — must pass before deploy.
-
-## Commit Conventions
-
-Format: `type: description` (types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`)
-
-Small commits, clear intent. No vague messages.
+Every new feature in a frontend must be wrapped in `<FeatureFlag>` before merging to staging. Bug fixes and refactors skip flags.
 
 ## File Ownership
 
-- This repo owns: `scripts/`, `tools/`, `hooks/`, `patches/`, `.claude/`, `.vscode/`, knowledge dirs, `index.md`, `README.md`
-- Sub-repos own: their own code, config, CI, Dockerfiles
-- Sub-repos are gitignored — never edit `.gitignore` to un-ignore them
-
-## Augment Context Engine
-
-`auggie` CLI is the primary code-context lookup tool — prefer over grep. Configure in `opencode.json` with `--add-workspace` for each sub-repo. Remote Augment MCP must be added manually from Augment's configuration page.
+- This repo owns `scripts/`, `tools/`, `.claude/`, `.vscode/`, knowledge dirs, `sessions/`, `index.md`, and `README.md`
+- Sub-repos own their own code, config, CI, and Dockerfiles
+- Sub-repos stay gitignored in this workspace repo
