@@ -194,8 +194,10 @@ def configure_opencode(root: Path, *, use_meridian: bool = True) -> None:
     anthropic = provider.setdefault("anthropic", {})
     anthropic_options = anthropic.setdefault("options", {})
     if use_meridian:
+        anthropic["apiKey"] = "x"
         anthropic_options["baseURL"] = MERIDIAN_BASE_URL
     else:
+        anthropic.pop("apiKey", None)
         anthropic_options.pop("baseURL", None)
         if not anthropic_options:
             anthropic.pop("options", None)
