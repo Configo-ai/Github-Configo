@@ -110,6 +110,21 @@ else
 fi
 
 echo ""
+echo "  Setting Anthropic proxy environment variables..."
+PROFILE_FILE="$HOME/.zshrc"
+[ -f "$HOME/.bashrc" ] && PROFILE_FILE="$HOME/.bashrc"
+for var_line in \
+  'export ANTHROPIC_API_KEY=x' \
+  'export ANTHROPIC_BASE_URL=http://127.0.0.1:3456'; do
+  var_name="${var_line#export }"
+  var_name="${var_name%%=*}"
+  if ! grep -q "export ${var_name}=" "$PROFILE_FILE" 2>/dev/null; then
+    echo "$var_line" >> "$PROFILE_FILE"
+  fi
+done
+echo "  ✓ ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL added to $PROFILE_FILE"
+
+echo ""
 echo "  Installing claude-opencode launcher globally..."
 NPM_BIN=$(npm prefix -g 2>/dev/null)/bin
 if [ -n "$NPM_BIN" ]; then

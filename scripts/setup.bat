@@ -74,6 +74,12 @@ if errorlevel 1 (
 )
 
 echo.
+echo   Setting Anthropic proxy environment variables...
+setx ANTHROPIC_API_KEY "x" >nul
+setx ANTHROPIC_BASE_URL "http://127.0.0.1:3456" >nul
+echo   [OK] ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL set permanently
+
+echo.
 echo   Installing global wrappers...
 for /f "tokens=*" %%i in ('npm prefix -g 2^>nul') do set NPM_BIN=%%i
 if defined NPM_BIN (
