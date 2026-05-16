@@ -25,6 +25,10 @@ def _resolve_binary(name: str) -> str:
             home / "AppData" / "Roaming" / "npm" / "opencode.cmd",
             home / "AppData" / "Roaming" / "npm" / "opencode",
         ],
+        "kimi": [
+            home / ".local" / "bin" / "kimi.exe",
+            home / ".local" / "bin" / "kimi",
+        ],
     }
     for candidate in candidates.get(name, []):
         if candidate.exists():
@@ -96,6 +100,33 @@ def launch_claude(root: Path, cwd: Path, passthrough: list[str], conversation: s
     return _run(args, cwd)
 
 
+def launch_kimi(root: Path, cwd: Path, passthrough: list[str], conversation: str | None) -> int:
+    """Launch the Kimi CLI in `cwd` with workspace_conversation_id correlation.
+
+    Kimi has no machine-readable `session list` yet (upstream MoonshotAI/kimi-cli#83),
+    so the launcher can't back-fill a freshly-created native session id the way it
+    does for OpenCode. Instead:
+      - If metadata has a stored kimi_session_id, pass --session <id> (resume).
+      - Else, default to --continue (most-recent session in this cwd) — Kimi's
+        native scope already matches "per-worktree", which is what we want.
+      - If the caller already passed --session/--resume/--continue in passthrough,
+        leave it alone.
+    """
+    setup_agents.configure_all(root)
+    explicit_session = _explicit_session(passthrough, ("-S", "--session", "-r", "--resume"))
+    state = prepare(root, cwd, "kimi", None, conversation, explicit_session)
+    kimi_bin = _resolve_binary("kimi")
+    args = [kimi_bin, *passthrough]
+    has_resume_flag = _has_any_flag(passthrough, ("-S", "--session", "-r", "--resume", "--continue"))
+    if not has_resume_flag:
+        stored = state.get("native_session_id")
+        if stored:
+            args = [kimi_bin, "--session", stored, *passthrough]
+        else:
+            args = [kimi_bin, "--continue", *passthrough]
+    return _run(args, cwd)
+
+
 def launch_opencode(root: Path, cwd: Path, passthrough: list[str], conversation: str | None) -> int:
     setup_agents.configure_all(root)
     opencode_bin = _resolve_binary("opencode")
@@ -113,7 +144,7 @@ def launch_opencode(root: Path, cwd: Path, passthrough: list[str], conversation:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("client", choices=("claude", "opencode"))
+    parser.add_argument("client", choices=("claude", "opencode", "kimi"))
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--cwd", default=".")
     parser.add_argument("--conversation")
@@ -124,6 +155,8 @@ def main() -> int:
         passthrough = passthrough[1:]
     if parsed.client == "claude":
         return launch_claude(root, cwd, passthrough, parsed.conversation)
+    if parsed.client == "kimi":
+        return launch_kimi(root, cwd, passthrough, parsed.conversation)
     return launch_opencode(root, cwd, passthrough, parsed.conversation)
 
 

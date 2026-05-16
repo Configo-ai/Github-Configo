@@ -30,12 +30,12 @@ call :ensure_repo "Configo-Developer-Frontend" "https://github.com/Configo-ai/Co
 call :ensure_repo "Configo-Deployment" "https://github.com/Configo-ai/Configo-Deployment.git"
 
 echo.
-echo   Installing Python MCP SDK...
-pip install --quiet mcp
+echo   Installing Python dependencies (mcp, textual)...
+pip install --quiet mcp textual
 if errorlevel 1 (
-    echo   [WARN] pip install mcp failed - ws MCP server may not work
+    echo   [WARN] pip install mcp/textual failed - ws MCP server or TUI may not work
 ) else (
-    echo   [OK] mcp installed
+    echo   [OK] mcp + textual installed
 )
 
 for /f "tokens=*" %%i in ('python -c "import json, pathlib; print(json.loads(pathlib.Path(r'tools/workspace_runtime.yaml').read_text())['opencode_version'])"') do set OPENCODE_VERSION=%%i

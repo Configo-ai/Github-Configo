@@ -78,9 +78,9 @@ for repo in "${REPOS[@]}"; do
 done
 
 echo ""
-echo "  Installing Python MCP SDK..."
-pip3 install --quiet mcp
-echo "  ✓ mcp installed"
+echo "  Installing Python dependencies (mcp, textual)..."
+pip3 install --quiet mcp textual
+echo "  ✓ mcp + textual installed"
 
 echo ""
 echo "  Installing OpenCode $(python3 - <<'PY'

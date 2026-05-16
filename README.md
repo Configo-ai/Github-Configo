@@ -200,3 +200,4 @@ Github-Configo/
 - `context7` remains the external docs channel
 - desktop/app launchers can be installed with `scripts/install-windows-launchers.ps1` or `scripts/install-linux-launchers.sh`
 - qmd defaults to Vulkan on Windows (CUDA 12/13 ABI mismatch in the prebuilt binary). For native CUDA, run `scripts\build-qmd-cuda.bat` after installing VS Build Tools — gives ~3-5x faster embedding/rerank vs Vulkan
+- `scripts\ws-tui.bat` / `scripts/ws-tui.sh` opens a three-pane TUI (Textual) to pick a workspace conversation + worktree, dispatch Claude / OpenCode / Kimi with the right resume flag, and handle dirty sub-repos with a per-repo stash/discard dialog before launch. Press `n` to create a new cross-repo worktree from inside the TUI; the panel auto-refreshes when `sessions/` or `.worktrees/` change on disk
