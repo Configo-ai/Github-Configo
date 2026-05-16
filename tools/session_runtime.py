@@ -544,6 +544,37 @@ def list_conversations(root: Path, cwd: Path | None = None, same_scope_only: boo
     return items
 
 
+def create_conversation(root: Path, cwd: Path, activate_for_scope: bool = True) -> dict[str, Any]:
+    """Mint a fresh workspace_conversation_id with empty metadata.
+
+    Equivalent to "what the launcher does on first run in an un-mapped scope",
+    but standalone so callers can preallocate an id without spawning an agent.
+    Returns a payload mirroring `activate()`.
+    """
+    conversation = uuid4().hex[:12]
+    metadata = _default_metadata(root, conversation, cwd)
+    metadata["updated_at"] = _now()
+    scope = _scope_key(root, cwd)
+    metadata["scope_key"] = scope
+    metadata["repos"] = _repos_in_scope(root, cwd)
+    if scope.startswith(".worktrees"):
+        metadata["worktree"] = scope
+    _refresh_metadata_fields(metadata, conversation)
+    if activate_for_scope:
+        active = _load_json(_active_path(root), {"scopes": {}})
+        active.setdefault("scopes", {})[scope] = conversation
+        _write_json(_active_path(root), active)
+    _write_json(_metadata_path(root, conversation), metadata)
+    render_markdown(root, conversation, metadata)
+    refresh_index(root)
+    return {
+        "workspace_conversation_id": conversation,
+        "scope_key": scope,
+        "title": metadata.get("title", conversation),
+        "activated": activate_for_scope,
+    }
+
+
 def activate(root: Path, cwd: Path, conversation_id: str) -> dict[str, Any]:
     metadata = _load_json(_metadata_path(root, conversation_id), None)
     if metadata is None:
@@ -570,7 +601,8 @@ def activate(root: Path, cwd: Path, conversation_id: str) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("prepare", "claude-hook", "opencode-finalize", "refresh-index", "list", "activate"))
+    parser.add_argument("command", choices=("prepare", "claude-hook", "opencode-finalize", "refresh-index", "list", "activate", "new"))
+    parser.add_argument("--no-activate", action="store_true", help="Used with `new`: mint an id without registering it as active for the cwd.")
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--cwd", default=os.getcwd())
     parser.add_argument("--client")
@@ -612,6 +644,14 @@ def main() -> int:
     if args.command == "activate":
         payload = activate(root, cwd, args.conversation or "")
         print(json.dumps(payload) if args.format == "json" else f"Active conversation for {payload['scope_key']}: {payload['title']} ({payload['workspace_conversation_id']})")
+        return 0
+    if args.command == "new":
+        payload = create_conversation(root, cwd, activate_for_scope=not args.no_activate)
+        if args.format == "json":
+            print(json.dumps(payload))
+        else:
+            verb = "Active" if payload["activated"] else "Created"
+            print(f"{verb} workspace conversation: {payload['workspace_conversation_id']} (scope: {payload['scope_key']})")
         return 0
     return 1
 

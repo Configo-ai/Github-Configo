@@ -361,10 +361,13 @@ class NewWorktreeModal(ModalScreen[str | None]):
 # --- Main app ---------------------------------------------------------------
 
 
+NEW_CONVERSATION_SENTINEL = "__new__"
+
+
 @dataclass
 class LaunchSpec:
     agent: str
-    conversation_id: str
+    conversation_id: str | None  # None means "let workspace_launcher auto-mint"
     worktree_dir: Path
 
 
@@ -492,6 +495,15 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         conv_table = self.query_one("#conv-table", DataTable)
         conv_table.clear(columns=True)
         conv_table.add_columns("id", "title", "repos", "updated")
+        # Synthetic row at top — picking it tells workspace_launcher to mint
+        # a fresh workspace_conversation_id on dispatch.
+        conv_table.add_row(
+            "[new]",
+            "[+ New conversation]",
+            "-",
+            "-",
+            key=NEW_CONVERSATION_SENTINEL,
+        )
         for c in self.conversations:
             conv_table.add_row(
                 c["workspace_conversation_id"][:8],
@@ -523,6 +535,16 @@ class WorkspaceTUI(App[LaunchSpec | None]):
 
     def _select_conversation_by_key(self, key: str | None) -> None:
         if not key:
+            return
+        if key == NEW_CONVERSATION_SENTINEL:
+            # Synthetic "[+ New conversation]" row — Launch will let
+            # workspace_launcher mint a fresh id. No worktree auto-suggest
+            # because a new conversation has no preferred worktree yet.
+            self.selected_conversation = {
+                "workspace_conversation_id": NEW_CONVERSATION_SENTINEL,
+                "title": "[+ New conversation]",
+            }
+            self._update_hint()
             return
         match = next((c for c in self.conversations if c["workspace_conversation_id"] == key), None)
         if not match:
@@ -562,9 +584,11 @@ class WorkspaceTUI(App[LaunchSpec | None]):
             return
         wt = self.selected_worktree
         conv = self.selected_conversation
+        conv_id = conv["workspace_conversation_id"]
+        conv_label = "new (auto-mint)" if conv_id == NEW_CONVERSATION_SENTINEL else f"{conv_id[:12]} ({conv.get('title', '')[:30]})"
         hint.update(
             f"Launch [{self.selected_agent}] in {wt.task}\n"
-            f"  conv: {conv['workspace_conversation_id'][:12]} ({conv.get('title', '')[:30]})\n"
+            f"  conv: {conv_label}\n"
             f"  status: {wt.status_glyph}"
         )
 
@@ -614,8 +638,13 @@ class WorkspaceTUI(App[LaunchSpec | None]):
             return
         wt = self.selected_worktree
         if wt.dirty_repos:
+            # For a fresh conversation we don't have a real id yet — label
+            # any stash with "new" so it's still discoverable later.
+            label_seed = self.selected_conversation["workspace_conversation_id"]
+            if label_seed == NEW_CONVERSATION_SENTINEL:
+                label_seed = "new"
             self.push_screen(
-                DirtyTreeModal(wt, self.selected_conversation["workspace_conversation_id"]),
+                DirtyTreeModal(wt, label_seed),
                 self._after_dirty_check,
             )
         else:
@@ -627,9 +656,12 @@ class WorkspaceTUI(App[LaunchSpec | None]):
 
     def _do_launch(self) -> None:
         assert self.selected_conversation and self.selected_worktree
+        conv_id: str | None = self.selected_conversation["workspace_conversation_id"]
+        if conv_id == NEW_CONVERSATION_SENTINEL:
+            conv_id = None
         self.launch_spec = LaunchSpec(
             agent=self.selected_agent,
-            conversation_id=self.selected_conversation["workspace_conversation_id"],
+            conversation_id=conv_id,
             worktree_dir=self.selected_worktree.path,
         )
         self.exit(self.launch_spec)
@@ -661,9 +693,11 @@ def main() -> int:
         str(root),
         "--cwd",
         str(spec.worktree_dir),
-        "--conversation",
-        spec.conversation_id,
     ]
+    # Omit --conversation when the sentinel was picked — workspace_launcher
+    # will mint a fresh id via session_runtime.prepare() in that case.
+    if spec.conversation_id is not None:
+        argv.extend(["--conversation", spec.conversation_id])
     if os.name == "nt":
         # Windows: os.execv replaces the process but the parent shell sees
         # the prompt return as if the child finished — same UX as Unix.

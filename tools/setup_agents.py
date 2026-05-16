@@ -273,11 +273,55 @@ def configure_opencode(root: Path) -> None:
             _replace_tree(source, opencode_skills_dir / name)
 
 
+def _configo_helper_target_dir() -> Path:
+    """Where the `configo-helper` shim is installed.
+
+    Picks an existing PATH-friendly directory:
+      - Windows: %APPDATA%\\npm (alongside opencode.cmd / qmd.cmd / auggie.cmd)
+      - macOS/Linux: ~/.local/bin (a well-known XDG-style user bin dir)
+    """
+    if platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(appdata) / "npm"
+    return Path.home() / ".local" / "bin"
+
+
+def install_configo_helper(root: Path) -> None:
+    """Drop a shim onto PATH so `configo-helper` works from any directory.
+
+    The shim bakes in the absolute repo path via CONFIGO_REPO_ROOT so the
+    helper doesn't need to guess where the workspace lives.
+    """
+    helper = root / "tools" / "configo_helper.py"
+    target_dir = _configo_helper_target_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if platform.system() == "Windows":
+        shim_path = target_dir / "configo-helper.cmd"
+        contents = (
+            "@echo off\r\n"
+            "setlocal\r\n"
+            f"set CONFIGO_REPO_ROOT={root}\r\n"
+            f'python "{helper}" %*\r\n'
+        )
+        shim_path.write_text(contents, encoding="utf-8")
+    else:
+        shim_path = target_dir / "configo-helper"
+        contents = (
+            "#!/bin/sh\n"
+            f'export CONFIGO_REPO_ROOT="{root}"\n'
+            f'exec python3 "{helper}" "$@"\n'
+        )
+        shim_path.write_text(contents, encoding="utf-8")
+        shim_path.chmod(0o755)
+
+
 def configure_all(root: Path) -> None:
     """Configure every supported coding-agent client: OpenCode, Claude Code, Kimi."""
     configure_opencode(root)
     configure_claude_code(root)
     configure_kimi(root)
+    install_configo_helper(root)
 
 
 def main() -> None:
