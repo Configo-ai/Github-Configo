@@ -89,19 +89,42 @@ def _has_any_flag(args: list[str], flags: tuple[str, ...]) -> bool:
     return any(item in flags or any(item.startswith(f"{flag}=") for flag in flags) for item in args)
 
 
+def _system_prompt_append_text(root: Path) -> str | None:
+    """Read the combined skill body that setup_agents.build_system_prompt_append
+    writes to tools/.system_prompt_append.md. Returns None if it doesn't exist
+    or is empty."""
+    path = root / "tools" / ".system_prompt_append.md"
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return text or None
+
+
 def launch_claude(root: Path, cwd: Path, passthrough: list[str], conversation: str | None) -> int:
     setup_agents.configure_all(root)
     explicit_session = _explicit_session(passthrough, ("-r", "--resume"))
     state = prepare(root, cwd, "claude", None, conversation, explicit_session)
     claude_bin = _resolve_binary("claude")
-    args = [claude_bin, *passthrough]
+    leading: list[str] = []
+    # Inject the shared system-prompt-append body (caveman etc.) unless the
+    # caller already passed --append-system-prompt themselves.
+    if not _has_any_flag(passthrough, ("--append-system-prompt",)):
+        body = _system_prompt_append_text(root)
+        if body:
+            leading.extend(["--append-system-prompt", body])
+    args = [claude_bin, *leading, *passthrough]
     if not _has_any_flag(passthrough, ("-r", "--resume", "-c", "--continue")) and state.get("native_session_id"):
-        args = [claude_bin, "-r", state["native_session_id"], *passthrough]
+        args = [claude_bin, *leading, "-r", state["native_session_id"], *passthrough]
     return _run(args, cwd)
 
 
 def launch_kimi(root: Path, cwd: Path, passthrough: list[str], conversation: str | None) -> int:
     """Launch the Kimi CLI in `cwd` with workspace_conversation_id correlation.
+
+    Kimi CLI also has no documented --append-system-prompt equivalent yet,
+    so the shared skill-inject body (caveman etc.) is not injected here.
+    The kimi-cli --agent-file flag is for a different purpose (custom agent
+    definitions), not system-prompt prepending.
 
     Kimi has no machine-readable `session list` yet (upstream MoonshotAI/kimi-cli#83),
     so the launcher can't back-fill a freshly-created native session id the way it

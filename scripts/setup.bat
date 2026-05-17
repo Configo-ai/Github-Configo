@@ -46,6 +46,41 @@ if errorlevel 1 exit /b 1
 echo   [OK] OpenCode pinned
 call :ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 call :ensure_npm_global "@tobilu/qmd" "qmd"
+call :ensure_npm_global "typescript-language-server" "typescript-language-server"
+
+echo.
+echo   Installing language servers for LSP-backed symbol queries...
+where gopls >nul 2>nul
+if errorlevel 1 (
+    where go >nul 2>nul && (
+        echo   Installing gopls (Go LSP)...
+        call go install golang.org/x/tools/gopls@latest
+        echo   [OK] gopls installed
+    ) || (
+        echo   [WARN] Go not on PATH; skipping gopls install
+    )
+) else (
+    echo   [OK] gopls already on PATH
+)
+call :ensure_npm_global "pyright" "pyright-langserver"
+
+echo.
+echo   Installing mcp-language-server (Go binary, bridges any LSP to MCP)...
+where mcp-language-server >nul 2>nul
+if errorlevel 1 (
+    where go >nul 2>nul && (
+        call go install github.com/isaacphi/mcp-language-server@latest
+        echo   [OK] mcp-language-server installed
+    ) || (
+        echo   [WARN] Go not on PATH; skipping mcp-language-server install
+        echo          Install Go from https://go.dev/dl, then re-run setup.
+    )
+) else (
+    echo   [OK] mcp-language-server already on PATH
+)
+echo.
+echo   Note: rust-analyzer not auto-installed (no Rust repos detected).
+echo         If you add Rust later: rustup component add rust-analyzer
 
 echo.
 where kimi >nul 2>nul
@@ -73,6 +108,11 @@ echo.
 echo   Setting QMD_LLAMA_GPU=vulkan (avoids CUDA 12/13 ABI mismatch in qmd's prebuilt binary)...
 setx QMD_LLAMA_GPU vulkan >nul
 echo   [OK] QMD_LLAMA_GPU persisted
+
+echo.
+echo   Setting CLAUDE_CODE_SUBAGENT_MODEL=haiku (parallel Task-tool subagents default cheap)...
+setx CLAUDE_CODE_SUBAGENT_MODEL haiku >nul
+echo   [OK] CLAUDE_CODE_SUBAGENT_MODEL persisted
 
 echo.
 if not exist "%APPDATA%\opencode" mkdir "%APPDATA%\opencode"

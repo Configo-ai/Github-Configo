@@ -98,6 +98,31 @@ PY
 echo "  ✓ OpenCode pinned"
 ensure_npm_global "@augmentcode/auggie@latest" "auggie"
 ensure_npm_global "@tobilu/qmd" "qmd"
+ensure_npm_global "typescript-language-server" "typescript-language-server"
+ensure_npm_global "pyright" "pyright-langserver"
+
+echo ""
+if command -v gopls >/dev/null 2>&1; then
+  echo "  ✓ gopls already on PATH"
+elif command -v go >/dev/null 2>&1; then
+  echo "  Installing gopls (Go LSP)..."
+  go install golang.org/x/tools/gopls@latest
+  echo "  ✓ gopls installed (ensure \$(go env GOBIN) or \$GOPATH/bin is on PATH)"
+else
+  echo "  ! Go not on PATH; skipping gopls install"
+fi
+
+echo ""
+if command -v mcp-language-server >/dev/null 2>&1; then
+  echo "  ✓ mcp-language-server already on PATH"
+elif command -v go >/dev/null 2>&1; then
+  echo "  Installing mcp-language-server via go install..."
+  go install github.com/isaacphi/mcp-language-server@latest
+  echo "  ✓ mcp-language-server installed (ensure \$(go env GOBIN) or \$GOPATH/bin is on PATH)"
+else
+  echo "  ! Go not on PATH; skipping mcp-language-server install"
+  echo "    Install Go from https://go.dev/dl, then re-run setup."
+fi
 
 echo ""
 if command -v kimi >/dev/null 2>&1; then
@@ -121,6 +146,15 @@ fi
 echo ""
 echo "  Applying local qmd patches (QMD_LLAMA_GPU=vulkan/metal/cuda support)..."
 python3 "$ROOT/tools/patch_qmd.py"
+
+echo ""
+echo "  Persisting CLAUDE_CODE_SUBAGENT_MODEL=haiku (parallel Task subagents default cheap)..."
+PROFILE_FILE="$HOME/.zshrc"
+[ -f "$HOME/.bashrc" ] && PROFILE_FILE="$HOME/.bashrc"
+if ! grep -q "CLAUDE_CODE_SUBAGENT_MODEL=" "$PROFILE_FILE" 2>/dev/null; then
+  echo 'export CLAUDE_CODE_SUBAGENT_MODEL=haiku' >> "$PROFILE_FILE"
+fi
+echo "  ✓ CLAUDE_CODE_SUBAGENT_MODEL added to $PROFILE_FILE"
 
 echo ""
 echo "  Installing Superpowers for OpenCode..."

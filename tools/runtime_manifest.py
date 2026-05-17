@@ -54,6 +54,14 @@ def skills_allow(root: Path) -> list[str]:
     return list(load_manifest(root)["skills_allow"])
 
 
+def system_prompt_appends(root: Path) -> list[str]:
+    """Skill names whose SKILL.md body should be appended to the system prompt
+    of every supported coding-agent launch (Claude Code, OpenCode). Resolved
+    against ~/.agents/skills/<name>/SKILL.md.
+    """
+    return list(load_manifest(root).get("system_prompt_appends", []))
+
+
 def plugins(root: Path) -> list[str]:
     return list(load_manifest(root)["plugins"])
 

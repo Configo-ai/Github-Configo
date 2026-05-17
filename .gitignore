@@ -19,3 +19,9 @@ __pycache__/
 # metadata are not committed (false-positive retrieval risk + privacy).
 sessions/
 .sessions-archive/
+
+# Generated at setup time from manifest.system_prompt_appends.
+tools/.system_prompt_append.md
+
+# Trace log for the code-graph router (only written when CONFIGO_CGRAG_TRACE=1).
+tools/.code_graph_router.log

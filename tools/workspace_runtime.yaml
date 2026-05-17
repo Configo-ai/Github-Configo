@@ -95,8 +95,36 @@
       "qmd_knowledge": "qmd-knowledge",
       "ws": "configo-ws",
       "context7": "context7"
-    }
+    },
+    "code_graph_rag": {
+      "enabled": true,
+      "package": "@er77/code-graph-rag-mcp",
+      "timeout_ms": 80000,
+      "router": {
+        "name": "code-graph"
+      }
+    },
+    "language_servers": [
+      {
+        "name": "lang-go",
+        "lsp": "gopls",
+        "extra_args": []
+      },
+      {
+        "name": "lang-ts",
+        "lsp": "typescript-language-server",
+        "extra_args": ["--stdio"]
+      },
+      {
+        "name": "lang-py",
+        "lsp": "pyright-langserver",
+        "extra_args": ["--stdio"]
+      }
+    ]
   },
+  "system_prompt_appends": [
+    "caveman"
+  ],
   "skills_allow": [
     "impeccable",
     "caveman*",

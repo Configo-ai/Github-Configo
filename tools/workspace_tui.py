@@ -19,6 +19,7 @@ Flow:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -38,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import session_runtime  # noqa: E402
 import setup_workspace  # noqa: E402
 from runtime_manifest import repo_specs  # noqa: E402
+from session_runtime import rename_conversation  # noqa: E402
 
 try:
     from textual.app import App, ComposeResult
@@ -65,14 +67,75 @@ class WorktreeRow:
     path: Path
     repos: list[str]
     dirty_repos: list[str]
+    # Per-repo extras for the badge column. `branches[repo]` -> branch name;
+    # `ahead_behind[repo]` -> "+N/-M" string (or "" if synced / not tracked).
+    branches: dict[str, str]
+    ahead_behind: dict[str, str]
 
     @property
     def status_glyph(self) -> str:
         return "dirty ⚠" if self.dirty_repos else "clean ✓"
 
+    @property
+    def branch_summary(self) -> str:
+        # If all repos share one branch name, show that once. Otherwise list
+        # repo:branch pairs.
+        unique = set(b for b in self.branches.values() if b)
+        if len(unique) == 1:
+            return next(iter(unique))
+        return ", ".join(f"{r}:{b}" for r, b in self.branches.items() if b) or "-"
+
+    @property
+    def ahead_behind_summary(self) -> str:
+        parts = [f"{r} {ab}" for r, ab in self.ahead_behind.items() if ab]
+        if not parts:
+            return "-"
+        # If every repo has the same delta, collapse.
+        unique_deltas = set(self.ahead_behind.values())
+        unique_deltas.discard("")
+        if len(unique_deltas) == 1:
+            return next(iter(unique_deltas))
+        return ", ".join(parts)
+
 
 def _load_conversations(root: Path) -> list[dict]:
     return session_runtime.list_conversations(root, root, same_scope_only=False)
+
+
+def _parse_branch_status(repo_dir: Path) -> tuple[bool, str, str]:
+    """Run `git status --branch --short --porcelain=2` once and extract:
+      - dirty (any non-branch lines present?)
+      - branch name
+      - ahead/behind string like "+3/-1" or "" when in-sync or no upstream
+
+    Single git call per repo replaces two (status --porcelain + status --branch).
+    """
+    result = subprocess.run(
+        ["git", "status", "--branch", "--porcelain=2"],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False, "", ""
+    branch = ""
+    ab = ""
+    dirty = False
+    for line in result.stdout.splitlines():
+        if line.startswith("# branch.head "):
+            branch = line.split(" ", 2)[2]
+        elif line.startswith("# branch.ab "):
+            # Format: "# branch.ab +N -M"
+            parts = line.split()
+            if len(parts) >= 4:
+                ahead = int(parts[2].lstrip("+") or 0)
+                behind = int(parts[3].lstrip("-") or 0)
+                if ahead or behind:
+                    ab = f"+{ahead}/-{behind}"
+        elif not line.startswith("#"):
+            dirty = True
+    return dirty, branch, ab
 
 
 def _load_worktrees(root: Path) -> list[WorktreeRow]:
@@ -85,20 +148,27 @@ def _load_worktrees(root: Path) -> list[WorktreeRow]:
             continue
         repos: list[str] = []
         dirty: list[str] = []
+        branches: dict[str, str] = {}
+        ahead_behind: dict[str, str] = {}
         for repo_dir in sorted(task_dir.iterdir()):
             if not repo_dir.is_dir() or not (repo_dir / ".git").exists():
                 continue
             repos.append(repo_dir.name)
-            result = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=str(repo_dir),
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.stdout.strip():
+            is_dirty, branch, ab = _parse_branch_status(repo_dir)
+            if is_dirty:
                 dirty.append(repo_dir.name)
-        rows.append(WorktreeRow(task=task_dir.name, path=task_dir, repos=repos, dirty_repos=dirty))
+            branches[repo_dir.name] = branch
+            ahead_behind[repo_dir.name] = ab
+        rows.append(
+            WorktreeRow(
+                task=task_dir.name,
+                path=task_dir,
+                repos=repos,
+                dirty_repos=dirty,
+                branches=branches,
+                ahead_behind=ahead_behind,
+            )
+        )
     return rows
 
 
@@ -358,6 +428,57 @@ class NewWorktreeModal(ModalScreen[str | None]):
         self.dismiss(task)
 
 
+# --- Rename modal -----------------------------------------------------------
+
+
+class RenameModal(ModalScreen[str | None]):
+    """Prompt for a new conversation title. Returns the new title on submit,
+    None on cancel. Empty string clears the manual title (auto-derive resumes)."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = """
+    RenameModal { align: center middle; }
+    RenameModal > Vertical {
+        background: $surface;
+        border: thick $accent;
+        padding: 1 2;
+        width: 60%;
+        height: auto;
+    }
+    RenameModal #title { text-style: bold; color: $accent; margin-bottom: 1; }
+    """
+
+    def __init__(self, current_title: str) -> None:
+        super().__init__()
+        self.current_title = current_title
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("Rename conversation", id="title")
+            yield Input(value=self.current_title, placeholder="leave empty to clear", id="title-input")
+            with Horizontal():
+                yield Button("Save", id="save-btn", variant="primary")
+                yield Button("Cancel [Esc]", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#title-input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save-btn":
+            self.dismiss(self.query_one("#title-input", Input).value)
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 # --- Main app ---------------------------------------------------------------
 
 
@@ -377,7 +498,12 @@ class WorkspaceTUI(App[LaunchSpec | None]):
     #conversations, #worktrees, #agent { width: 1fr; height: 100%; border: round $surface; padding: 1; }
     .pane-title { text-style: bold; color: $accent; }
     #launch-row { dock: bottom; height: 3; padding: 1; }
+    #filter-row { dock: top; height: 3; padding: 0 1; display: none; }
+    #filter-row.visible { display: block; }
+    #filter-input { width: 1fr; }
     DataTable { height: 1fr; }
+    #conv-table { height: 2fr; }
+    #conv-preview { height: 1fr; border-top: round $surface-darken-1; padding: 0 1; color: $text-muted; overflow-y: auto; }
     """
 
     BINDINGS = [
@@ -385,6 +511,8 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         Binding("w", "focus_pane('worktrees')", "Worktrees"),
         Binding("a", "focus_pane('agent')", "Agent"),
         Binding("n", "new_worktree", "New worktree"),
+        Binding("f2", "rename_conversation", "Rename conv"),
+        Binding("slash", "open_filter", "Filter"),
         Binding("r", "refresh", "Refresh"),
         Binding("enter", "launch", "Launch"),
         Binding("q", "quit", "Quit"),
@@ -405,13 +533,18 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         # Tracks filesystem signatures so we only repopulate when something
         # observable has actually changed (cheaper than re-running git status).
         self._last_signature: tuple = ()
+        # Case-insensitive substring filter applied to both lists.
+        self._filter_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
+        with Horizontal(id="filter-row"):
+            yield Input(placeholder="filter conversations + worktrees (Esc to clear)", id="filter-input")
         with Horizontal(id="panes"):
             with Vertical(id="conversations"):
                 yield Label("Conversations [c]", classes="pane-title")
                 yield DataTable(id="conv-table", cursor_type="row", zebra_stripes=True)
+                yield Static("", id="conv-preview")
             with Vertical(id="worktrees"):
                 yield Label("Worktrees [w]", classes="pane-title")
                 yield DataTable(id="wt-table", cursor_type="row", zebra_stripes=True)
@@ -491,35 +624,71 @@ class WorkspaceTUI(App[LaunchSpec | None]):
                     self.selected_worktree = w
                     break
 
+    def _matches_filter(self, *fields: str) -> bool:
+        if not self._filter_text:
+            return True
+        needle = self._filter_text.lower()
+        return any(needle in (field or "").lower() for field in fields)
+
+    @staticmethod
+    def _format_tokens(totals: dict) -> str:
+        """Render a compact token-usage badge: `12.3K in / 4.5K out`.
+        Returns "-" when no telemetry is recorded yet."""
+        total_in = sum(t.get("input_tokens", 0) for t in totals.values() if isinstance(t, dict))
+        total_out = sum(t.get("output_tokens", 0) for t in totals.values() if isinstance(t, dict))
+        if not (total_in or total_out):
+            return "-"
+
+        def short(n: int) -> str:
+            if n >= 1_000_000:
+                return f"{n / 1_000_000:.1f}M"
+            if n >= 1_000:
+                return f"{n / 1_000:.1f}K"
+            return str(n)
+
+        return f"{short(total_in)}/{short(total_out)}"
+
     def _populate_tables(self) -> None:
         conv_table = self.query_one("#conv-table", DataTable)
         conv_table.clear(columns=True)
-        conv_table.add_columns("id", "title", "repos", "updated")
-        # Synthetic row at top — picking it tells workspace_launcher to mint
-        # a fresh workspace_conversation_id on dispatch.
+        conv_table.add_columns("id", "title", "repos", "tokens", "updated")
+        # Synthetic "+ New conversation" row is exempt from filtering — it's
+        # always reachable.
         conv_table.add_row(
             "[new]",
             "[+ New conversation]",
             "-",
             "-",
+            "-",
             key=NEW_CONVERSATION_SENTINEL,
         )
         for c in self.conversations:
+            if not self._matches_filter(
+                c["workspace_conversation_id"],
+                c.get("title", ""),
+                ", ".join(c.get("repos", [])),
+            ):
+                continue
             conv_table.add_row(
                 c["workspace_conversation_id"][:8],
                 c.get("title", "")[:28],
-                ", ".join(c.get("repos", []))[:22] or "-",
+                ", ".join(c.get("repos", []))[:20] or "-",
+                self._format_tokens(c.get("totals") or {}),
                 c.get("updated_at", "")[:19],
                 key=c["workspace_conversation_id"],
             )
 
         wt_table = self.query_one("#wt-table", DataTable)
         wt_table.clear(columns=True)
-        wt_table.add_columns("task", "repos", "status")
+        wt_table.add_columns("task", "repos", "branch", "remote", "status")
         for w in self.worktrees:
+            if not self._matches_filter(w.task, ", ".join(w.repos), w.branch_summary):
+                continue
             wt_table.add_row(
                 w.task,
-                ", ".join(w.repos)[:24] or "-",
+                ", ".join(w.repos)[:20] or "-",
+                w.branch_summary[:18],
+                w.ahead_behind_summary[:14],
                 w.status_glyph,
                 key=w.task,
             )
@@ -550,6 +719,7 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         if not match:
             return
         self.selected_conversation = match
+        self._update_preview()
         # Auto-suggest worktree from conversation metadata if present.
         preferred = match.get("worktree")
         if preferred:
@@ -560,7 +730,29 @@ class WorkspaceTUI(App[LaunchSpec | None]):
                         table.move_cursor(row=index)
                     self.selected_worktree = w
                     break
+        # Auto-select last-used agent for this conversation. `client_history`
+        # is a chronological list; the most-recent client we recognize wins.
+        history = match.get("client_history") or []
+        for entry in reversed(history):
+            client = entry.get("client")
+            if client in AGENTS:
+                self._select_agent(client)
+                break
         self._update_hint()
+
+    def _select_agent(self, agent: str) -> None:
+        if agent not in AGENTS:
+            return
+        self.selected_agent = agent
+        try:
+            radio_set = self.query_one("#agent-set", RadioSet)
+        except Exception:  # noqa: BLE001 — outside a mounted screen during tests
+            return
+        for child in radio_set.query(RadioButton):
+            if child.id == f"agent-{agent}":
+                child.value = True
+            else:
+                child.value = False
 
     def _select_worktree_by_key(self, key: str | None) -> None:
         if not key:
@@ -576,6 +768,44 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         if button and button.id and button.id.startswith("agent-"):
             self.selected_agent = button.id[len("agent-"):]
             self._update_hint()
+
+    def _update_preview(self) -> None:
+        """Refresh the preview panel under the conversations list to show
+        the most recent prompts / summary for the selected conversation."""
+        try:
+            preview = self.query_one("#conv-preview", Static)
+        except Exception:  # noqa: BLE001 — outside a mounted screen during tests
+            return
+        conv = self.selected_conversation
+        if not conv or conv.get("workspace_conversation_id") == NEW_CONVERSATION_SENTINEL:
+            preview.update("")
+            return
+        # Read the metadata fresh — list_conversations strips prompts/summaries to keep
+        # the index small, so the preview goes back to the file for body content.
+        meta_path = self.root / "sessions" / conv["workspace_conversation_id"] / "metadata.json"
+        if not meta_path.exists():
+            preview.update("")
+            return
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            preview.update("(failed to read metadata)")
+            return
+        lines: list[str] = []
+        prompts = metadata.get("prompts", [])
+        if prompts:
+            for entry in prompts[-2:]:
+                text = (entry.get("text") or "").strip().splitlines()[0:1]
+                text = text[0] if text else ""
+                lines.append(f"> {text[:140]}")
+        summaries = metadata.get("final_summaries", [])
+        if summaries:
+            last = (summaries[-1].get("text") or "").strip().splitlines()[0:1]
+            last = last[0] if last else ""
+            lines.append(f"summary: {last[:200]}")
+        if not lines:
+            lines.append("(no prompts yet)")
+        preview.update("\n".join(lines))
 
     def _update_hint(self) -> None:
         hint = self.query_one("#launch-hint", Static)
@@ -615,6 +845,57 @@ class WorkspaceTUI(App[LaunchSpec | None]):
 
     def action_new_worktree(self) -> None:
         self.push_screen(NewWorktreeModal(self.root), self._after_new_worktree)
+
+    def action_open_filter(self) -> None:
+        row = self.query_one("#filter-row")
+        row.add_class("visible")
+        filter_input = self.query_one("#filter-input", Input)
+        filter_input.value = self._filter_text
+        filter_input.focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "filter-input":
+            return
+        self._filter_text = event.value.strip()
+        self._populate_tables()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Enter on the filter input: keep filter, return focus to conv table.
+        if event.input.id == "filter-input":
+            self.query_one("#conv-table", DataTable).focus()
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — textual.events.Key
+        # Esc in the filter input clears + closes it.
+        from textual.widgets import Input as _Input  # local to avoid top-level confusion
+        if event.key == "escape" and isinstance(self.focused, _Input) and self.focused.id == "filter-input":
+            self._filter_text = ""
+            self.focused.value = ""
+            self.query_one("#filter-row").remove_class("visible")
+            self._populate_tables()
+            self.query_one("#conv-table", DataTable).focus()
+            event.stop()
+
+    def action_rename_conversation(self) -> None:
+        conv = self.selected_conversation
+        if not conv or conv.get("workspace_conversation_id") == NEW_CONVERSATION_SENTINEL:
+            self.notify("Select a real conversation first.", severity="warning")
+            return
+        current = conv.get("title", "")
+        self.push_screen(RenameModal(current), lambda new_title: self._after_rename(conv["workspace_conversation_id"], new_title))
+
+    def _after_rename(self, conversation_id: str, new_title: str | None) -> None:
+        if new_title is None:
+            return
+        try:
+            rename_conversation(self.root, conversation_id, new_title)
+        except SystemExit as exc:
+            self.notify(f"Rename failed: {exc}", severity="error")
+            return
+        self._last_signature = ()  # force refresh
+        self._refresh_data()
+        self._populate_tables()
+        self._restore_selection(conversation_id, self.selected_worktree.task if self.selected_worktree else None)
+        self.notify("Renamed")
 
     def _after_new_worktree(self, task: str | None) -> None:
         if not task:

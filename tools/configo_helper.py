@@ -74,6 +74,61 @@ def _cmd_new(root: Path, rest: list[str]) -> int:
     return 0
 
 
+def _cmd_rename(root: Path, rest: list[str]) -> int:
+    import argparse as _argparse
+
+    import session_runtime
+
+    inner = _argparse.ArgumentParser(prog="configo-helper rename")
+    inner.add_argument("conversation_id", help="workspace_conversation_id (full 12-hex or prefix matching exactly one).")
+    inner.add_argument("title", help="new title (empty string clears, restoring auto-derive).")
+    parsed = inner.parse_args(rest)
+    # Resolve prefix to full id if the user passed only 8 chars.
+    resolved = parsed.conversation_id
+    if len(resolved) < 12:
+        all_ids = [c["workspace_conversation_id"] for c in session_runtime.list_conversations(root, root)]
+        matches = [cid for cid in all_ids if cid.startswith(resolved)]
+        if len(matches) != 1:
+            sys.stderr.write(f"configo-helper rename: id prefix {resolved!r} matched {len(matches)} conversations.\n")
+            return 2
+        resolved = matches[0]
+    payload = session_runtime.rename_conversation(root, resolved, parsed.title)
+    print(f"Renamed {payload['workspace_conversation_id']}: {payload['title']}")
+    return 0
+
+
+def _cmd_compact(root: Path, rest: list[str]) -> int:
+    import argparse as _argparse
+
+    import session_runtime
+
+    inner = _argparse.ArgumentParser(prog="configo-helper compact")
+    inner.add_argument("conversation_id", help="workspace_conversation_id (12-hex or unique prefix).")
+    inner.add_argument("--keep-last", type=int, default=20)
+    inner.add_argument("--summarize-with", default="claude", choices=("claude", "opencode", "kimi"))
+    parsed = inner.parse_args(rest)
+    resolved = parsed.conversation_id
+    if len(resolved) < 12:
+        all_ids = [c["workspace_conversation_id"] for c in session_runtime.list_conversations(root, root)]
+        matches = [cid for cid in all_ids if cid.startswith(resolved)]
+        if len(matches) != 1:
+            sys.stderr.write(f"id prefix {resolved!r} matched {len(matches)} conversations.\n")
+            return 2
+        resolved = matches[0]
+    payload = session_runtime.compact_conversation(
+        root,
+        resolved,
+        keep_last=parsed.keep_last,
+        summarize_with=parsed.summarize_with,
+    )
+    if payload.get("compacted"):
+        print(f"Compacted {payload['workspace_conversation_id']}: {payload['before']} -> {payload['after']} prompts")
+        print(f"Backup: {payload['backup']}")
+    else:
+        print(f"No-op: {payload.get('reason') or payload.get('error') or 'unknown'}")
+    return 0
+
+
 def _cmd_status(root: Path, _rest: list[str]) -> int:
     import session_runtime
     from runtime_manifest import repo_specs
@@ -95,6 +150,8 @@ COMMANDS = {
     "doctor": _cmd_doctor,
     "status": _cmd_status,
     "new": _cmd_new,
+    "rename": _cmd_rename,
+    "compact": _cmd_compact,
 }
 
 

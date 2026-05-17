@@ -349,6 +349,36 @@ def _extract_text(value: Any) -> list[str]:
     return [item for item in texts if item]
 
 
+def _claude_usage_totals(transcript_path: Path) -> dict[str, int]:
+    """Walk a Claude Code transcript JSONL and sum input/output token usage.
+
+    The transcript stores one JSON object per line. Assistant messages carry a
+    `message.usage` dict with input_tokens / output_tokens / cache_creation_*
+    / cache_read_*. We return the cumulative total across all assistant turns
+    in the file (which represents the whole conversation so far on this session).
+    """
+    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_creation_tokens": 0}
+    if not transcript_path.exists():
+        return totals
+    try:
+        text = transcript_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return totals
+    for line in text.splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        usage = (payload.get("message") or {}).get("usage") if isinstance(payload, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        for key in totals:
+            value = usage.get(key)
+            if isinstance(value, int):
+                totals[key] += value
+    return totals
+
+
 def _latest_claude_texts(transcript_path: Path) -> tuple[str | None, str | None]:
     last_user = None
     last_assistant = None
@@ -393,6 +423,12 @@ def claude_hook(root: Path) -> int:
             _append_unique(metadata["prompts"], {"timestamp": _now(), "client": "claude", "text": last_user})
         if last_assistant:
             _append_unique(metadata["final_summaries"], {"timestamp": _now(), "client": "claude", "text": last_assistant})
+        # Cumulative token totals for this conversation. The Claude transcript
+        # accumulates across the session, so we overwrite (don't add) per hook
+        # call — Anthropic's numbers already represent total-so-far.
+        totals = metadata.setdefault("totals", {})
+        per_client = totals.setdefault("claude", {})
+        per_client.update(_claude_usage_totals(Path(transcript_path).expanduser()))
     _refresh_metadata_fields(metadata, conversation)
     _write_json(_metadata_path(root, conversation), metadata)
     render_markdown(root, conversation, metadata)
@@ -538,10 +574,133 @@ def list_conversations(root: Path, cwd: Path | None = None, same_scope_only: boo
                 "scope_key": metadata.get("scope_key"),
                 "claude_session_id": metadata.get("claude_session_id"),
                 "opencode_session_id": metadata.get("opencode_session_id"),
+                # Last few client launches so the TUI can pre-select the
+                # agent the user picked last for this conversation.
+                "client_history": metadata.get("client_history", []),
+                # Cumulative token usage by client (only Claude populates this today;
+                # OpenCode + Kimi pending upstream telemetry support).
+                "totals": metadata.get("totals", {}),
             }
         )
     items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
     return items
+
+
+def compact_conversation(
+    root: Path,
+    conversation_id: str,
+    *,
+    keep_last: int = 20,
+    summarize_with: str = "claude",
+) -> dict[str, Any]:
+    """Replace prompts older than `keep_last` with a single summary entry.
+
+    Saves a backup of the pre-compact metadata to `.sessions-archive/<id>-pre-
+    compact-<timestamp>.json` so the change is reversible. Spawns a one-shot
+    Claude (or other) CLI invocation to produce the summary; if that call
+    fails the metadata is left unchanged.
+
+    Returns a payload with before/after counts.
+    """
+    metadata_path = _metadata_path(root, conversation_id)
+    metadata = _load_json(metadata_path, None)
+    if metadata is None:
+        raise SystemExit(f"Unknown workspace conversation: {conversation_id}")
+    prompts = metadata.get("prompts", [])
+    if len(prompts) <= keep_last:
+        return {
+            "workspace_conversation_id": conversation_id,
+            "before": len(prompts),
+            "after": len(prompts),
+            "compacted": False,
+            "reason": f"only {len(prompts)} prompts, nothing to do (threshold {keep_last}).",
+        }
+    older = prompts[:-keep_last]
+    newer = prompts[-keep_last:]
+
+    # Backup before doing anything destructive.
+    archive_dir = root / store_archive_dir_name(root)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    backup_path = archive_dir / f"{conversation_id}-pre-compact-{stamp}.json"
+    backup_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    # Build the summarization prompt — one input string the agent can answer
+    # in a single turn. We deliberately ask for terse output to keep the
+    # replacement entry small.
+    older_text = "\n\n---\n\n".join(
+        f"[{p.get('timestamp', '')}][{p.get('client', '?')}]\n{p.get('text', '').strip()}"
+        for p in older
+    )
+    instruction = (
+        f"Summarize the following {len(older)} earlier conversation turns into 5-10 short bullets. "
+        "Keep technical decisions, file paths, and any TODO items. Drop greetings, false starts, "
+        "and tool-output dumps. Output only the bullets, no preamble.\n\n"
+        f"{older_text}"
+    )
+
+    bin_name = shutil.which(summarize_with) or summarize_with
+    cli_args = {
+        "claude": [bin_name, "-p", instruction],
+        "opencode": [bin_name, "run", instruction],
+        "kimi": [bin_name, "--message", instruction],
+    }.get(summarize_with, [bin_name, "-p", instruction])
+
+    try:
+        proc = subprocess.run(cli_args, capture_output=True, text=True, timeout=180, check=False)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        return {
+            "workspace_conversation_id": conversation_id,
+            "compacted": False,
+            "error": f"summarizer ({summarize_with}) failed: {exc}",
+        }
+    summary_text = proc.stdout.strip() or "(summarizer returned empty output)"
+
+    summary_entry = {
+        "timestamp": _now(),
+        "client": f"compact:{summarize_with}",
+        "text": f"[compacted {len(older)} earlier turns]\n{summary_text}",
+    }
+    metadata["prompts"] = [summary_entry, *newer]
+    metadata["updated_at"] = _now()
+    metadata.setdefault("compactions", []).append(
+        {"timestamp": _now(), "removed": len(older), "backup": str(backup_path)}
+    )
+    _refresh_metadata_fields(metadata, conversation_id)
+    _write_json(metadata_path, metadata)
+    render_markdown(root, conversation_id, metadata)
+    refresh_index(root)
+    return {
+        "workspace_conversation_id": conversation_id,
+        "before": len(prompts),
+        "after": len(metadata["prompts"]),
+        "compacted": True,
+        "backup": str(backup_path),
+    }
+
+
+def store_archive_dir_name(root: Path) -> str:
+    return session_store(root).get("archive_directory", ".sessions-archive")
+
+
+def rename_conversation(root: Path, conversation_id: str, new_title: str) -> dict[str, Any]:
+    """Set a custom title for a conversation. The custom title survives
+    auto-derive because `_derive_title` honors any non-empty existing title.
+    Pass empty string to clear (then auto-derive applies again on next refresh).
+    """
+    metadata = _load_json(_metadata_path(root, conversation_id), None)
+    if metadata is None:
+        raise SystemExit(f"Unknown workspace conversation: {conversation_id}")
+    metadata["title"] = new_title.strip() if new_title.strip() else None
+    metadata["updated_at"] = _now()
+    _refresh_metadata_fields(metadata, conversation_id)
+    _write_json(_metadata_path(root, conversation_id), metadata)
+    render_markdown(root, conversation_id, metadata)
+    refresh_index(root)
+    return {
+        "workspace_conversation_id": conversation_id,
+        "title": metadata["title"],
+    }
 
 
 def create_conversation(root: Path, cwd: Path, activate_for_scope: bool = True) -> dict[str, Any]:
@@ -601,8 +760,11 @@ def activate(root: Path, cwd: Path, conversation_id: str) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("prepare", "claude-hook", "opencode-finalize", "refresh-index", "list", "activate", "new"))
+    parser.add_argument("command", choices=("prepare", "claude-hook", "opencode-finalize", "refresh-index", "list", "activate", "new", "rename", "compact"))
     parser.add_argument("--no-activate", action="store_true", help="Used with `new`: mint an id without registering it as active for the cwd.")
+    parser.add_argument("--title", help="Used with `rename`: new title for the conversation (empty string clears).")
+    parser.add_argument("--keep-last", type=int, default=20, help="Used with `compact`: how many recent prompts to keep verbatim.")
+    parser.add_argument("--summarize-with", default="claude", choices=("claude", "opencode", "kimi"), help="Used with `compact`: which CLI runs the one-shot summarization.")
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--cwd", default=os.getcwd())
     parser.add_argument("--client")
@@ -644,6 +806,34 @@ def main() -> int:
     if args.command == "activate":
         payload = activate(root, cwd, args.conversation or "")
         print(json.dumps(payload) if args.format == "json" else f"Active conversation for {payload['scope_key']}: {payload['title']} ({payload['workspace_conversation_id']})")
+        return 0
+    if args.command == "compact":
+        if not args.conversation:
+            sys.stderr.write("compact requires --conversation <id>\n")
+            return 2
+        payload = compact_conversation(
+            root,
+            args.conversation,
+            keep_last=args.keep_last,
+            summarize_with=args.summarize_with,
+        )
+        if args.format == "json":
+            print(json.dumps(payload))
+        else:
+            if payload.get("compacted"):
+                print(f"Compacted {payload['workspace_conversation_id']}: {payload['before']} -> {payload['after']} prompts (backup: {payload['backup']})")
+            else:
+                print(f"No-op: {payload.get('reason') or payload.get('error') or 'unknown'}")
+        return 0
+    if args.command == "rename":
+        if not args.conversation:
+            sys.stderr.write("rename requires --conversation <id>\n")
+            return 2
+        payload = rename_conversation(root, args.conversation, args.title or "")
+        if args.format == "json":
+            print(json.dumps(payload))
+        else:
+            print(f"Renamed {payload['workspace_conversation_id']}: {payload['title']}")
         return 0
     if args.command == "new":
         payload = create_conversation(root, cwd, activate_for_scope=not args.no_activate)

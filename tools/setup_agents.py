@@ -7,7 +7,7 @@ import platform
 import shutil
 from pathlib import Path
 
-from runtime_manifest import plugins, repo_specs, server_names, skills_allow
+from runtime_manifest import plugins, repo_specs, server_names, skills_allow, system_prompt_appends
 
 
 def _cmd(name: str) -> str:
@@ -106,12 +106,91 @@ def _hook_command(root: Path) -> str:
 
 
 # MCP server names that are no longer used; cleaned up from any client config we touch.
+# Includes pre-router per-repo `code-graph-<alias>` entries — the router collapses
+# those into a single `code-graph` server that takes a `repo` parameter.
 _LEGACY_MCP_NAMES = (
     "augment-context-engine",
     "augment-context-engine-local",
     "augment-context-engine-remote",
-    "qmd-conversations",  # merged into qmd-knowledge (single qmd mcp exposes all collections)
+    "qmd-conversations",  # merged into qmd-knowledge
+    "code-graph-backend",
+    "code-graph-ai-worker",
+    "code-graph-frontend",
+    "code-graph-web-frontend",
+    "code-graph-developer-frontend",
+    "code-graph-deployment",
 )
+
+
+def _code_graph_rag_servers(root: Path) -> dict[str, dict]:
+    """Single code-graph MCP entry that runs through tools/code_graph_router.py.
+
+    The router spawns one upstream `npx @er77/code-graph-rag-mcp <root>`
+    indexed over the whole workspace and adds an optional `repo` parameter
+    to every tool, scoping query results to a sub-repo by file-path prefix.
+    """
+    from runtime_manifest import load_manifest
+
+    cfg = (load_manifest(root).get("mcp") or {}).get("code_graph_rag") or {}
+    if not cfg.get("enabled"):
+        return {}
+    package = cfg.get("package", "@er77/code-graph-rag-mcp")
+    timeout_ms = cfg.get("timeout_ms", 80000)
+    router_name = (cfg.get("router") or {}).get("name", "code-graph")
+    router_script = root / "tools" / "code_graph_router.py"
+    upstream_cmd, upstream_args = _spawn_cmd("npx", [package, str(root)])
+    return {
+        router_name: {
+            "command": _python(),
+            "args": [
+                str(router_script),
+                "--root",
+                str(root),
+                "--upstream",
+                "--",
+                upstream_cmd,
+                *upstream_args,
+            ],
+            "env": {"MCP_TIMEOUT": str(timeout_ms)},
+        }
+    }
+
+
+def _language_server_servers(root: Path) -> dict[str, dict]:
+    """One mcp-language-server entry per language LSP defined in the manifest.
+
+    Each entry runs `mcp-language-server --workspace <root> --lsp <bin> [extra]`,
+    so a single Go process bridges any MCP client to the LSP. We point all of
+    them at the workspace root — gopls / typescript-language-server / pyright
+    all handle multi-module workspaces natively, so one MCP per language is
+    enough to cover all six sub-repos.
+
+    Skips any language whose LSP binary isn't on PATH (so installing only the
+    LSPs you actually use is enough).
+    """
+    from runtime_manifest import load_manifest
+
+    entries = (load_manifest(root).get("mcp") or {}).get("language_servers") or []
+    if not entries:
+        return {}
+    bridge = shutil.which("mcp-language-server") or "mcp-language-server"
+    out: dict[str, dict] = {}
+    for entry in entries:
+        name = entry.get("name")
+        lsp = entry.get("lsp")
+        if not name or not lsp:
+            continue
+        if shutil.which(lsp) is None:
+            # LSP binary missing — skip silently so users can opt-in by installing.
+            continue
+        args = ["--workspace", str(root), "--lsp", lsp]
+        extra = entry.get("extra_args") or []
+        if extra:
+            args.append("--")
+            args.extend(extra)
+        cmd, cmd_args = _spawn_cmd(bridge, args)
+        out[name] = {"command": cmd, "args": cmd_args}
+    return out
 
 
 def _build_mcp_servers(root: Path, names: dict[str, str]) -> dict[str, dict]:
@@ -127,6 +206,8 @@ def _build_mcp_servers(root: Path, names: dict[str, str]) -> dict[str, dict]:
             "args": [str(ws_script), "--root", str(root)],
         },
     }
+    servers.update(_code_graph_rag_servers(root))
+    servers.update(_language_server_servers(root))
     opencode_config = _load_json(_opencode_config_dir() / "opencode.json")
     ctx7 = opencode_config.get("mcp", {}).get(names["context7"])
     if ctx7 and ctx7.get("type") == "remote" and ctx7.get("url"):
@@ -261,6 +342,22 @@ def configure_opencode(root: Path) -> None:
     for pattern in skills_allow(root):
         skill_permission[pattern] = "allow"
 
+    # Inject the combined skill body (caveman etc.) as a system-prompt
+    # append via OpenCode's instructions[]. OpenCode reads each path on
+    # every launch and prepends contents to the system prompt.
+    append_path = _system_prompt_append_path(root)
+    instructions = list(config.get("instructions", []))
+    append_path_str = str(append_path)
+    if append_path.exists():
+        if append_path_str not in instructions:
+            instructions.append(append_path_str)
+    else:
+        instructions = [p for p in instructions if p != append_path_str]
+    if instructions:
+        config["instructions"] = instructions
+    else:
+        config.pop("instructions", None)
+
     _write_json(config_path, config)
 
     home = Path.home()
@@ -271,6 +368,60 @@ def configure_opencode(root: Path) -> None:
         source = agents_source / name
         if source.exists():
             _replace_tree(source, opencode_skills_dir / name)
+
+
+def _agents_skill_dir() -> Path:
+    """Where Superpowers (and our setup) installs skills."""
+    return Path.home() / ".agents" / "skills"
+
+
+def _read_skill_body(name: str) -> str | None:
+    """Return the body of ~/.agents/skills/<name>/SKILL.md without its YAML
+    frontmatter, or None if the skill isn't installed.
+
+    Frontmatter (between leading `---` markers) is metadata for the Skill
+    tool, not content the model should read; we strip it so injected text
+    is purely the prose the skill author wrote.
+    """
+    path = _agents_skill_dir() / name / "SKILL.md"
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), -1)
+        if end > 0:
+            text = "\n".join(lines[end + 1 :]).lstrip("\n")
+    return text.strip()
+
+
+def _system_prompt_append_path(root: Path) -> Path:
+    return root / "tools" / ".system_prompt_append.md"
+
+
+def build_system_prompt_append(root: Path) -> Path | None:
+    """Concatenate every skill body listed in `system_prompt_appends` into a
+    single file at tools/.system_prompt_append.md. Returns the path, or None
+    if no skills are configured / installed.
+
+    Called by configure_all so the file is fresh after every setup. The two
+    launchers read this file: Claude inlines its contents via
+    --append-system-prompt; OpenCode references the path via instructions[].
+    """
+    names = system_prompt_appends(root)
+    if not names:
+        return None
+    sections: list[str] = []
+    for name in names:
+        body = _read_skill_body(name)
+        if not body:
+            continue
+        sections.append(f"# {name}\n\n{body}")
+    if not sections:
+        return None
+    out = _system_prompt_append_path(root)
+    out.write_text("\n\n---\n\n".join(sections) + "\n", encoding="utf-8")
+    return out
 
 
 def _configo_helper_target_dir() -> Path:
@@ -318,6 +469,9 @@ def install_configo_helper(root: Path) -> None:
 
 def configure_all(root: Path) -> None:
     """Configure every supported coding-agent client: OpenCode, Claude Code, Kimi."""
+    # Generate the shared system-prompt-append file first so the per-client
+    # configurations below can reference it.
+    build_system_prompt_append(root)
     configure_opencode(root)
     configure_claude_code(root)
     configure_kimi(root)
