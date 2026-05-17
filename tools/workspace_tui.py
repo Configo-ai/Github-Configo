@@ -36,10 +36,10 @@ for _stream in (sys.stdout, sys.stderr):
 # Local imports must come before Textual so we get fast-fail import errors
 # if the workspace_runtime manifest is broken.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import session_runtime  # noqa: E402
-import setup_workspace  # noqa: E402
-from runtime_manifest import repo_specs  # noqa: E402
-from session_runtime import rename_conversation  # noqa: E402
+import session_runtime
+import setup_workspace
+from runtime_manifest import repo_specs
+from session_runtime import rename_conversation
 
 try:
     from textual.app import App, ComposeResult
@@ -419,7 +419,7 @@ class NewWorktreeModal(ModalScreen[str | None]):
         except SystemExit as exc:  # repo arg parsing errors raise SystemExit
             self.notify(f"Worktree creation failed: {exc}", severity="error")
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.notify(f"Worktree creation failed: {exc}", severity="error")
             return
         if rc != 0:
@@ -746,7 +746,7 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         self.selected_agent = agent
         try:
             radio_set = self.query_one("#agent-set", RadioSet)
-        except Exception:  # noqa: BLE001 — outside a mounted screen during tests
+        except Exception:
             return
         for child in radio_set.query(RadioButton):
             if child.id == f"agent-{agent}":
@@ -774,7 +774,7 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         the most recent prompts / summary for the selected conversation."""
         try:
             preview = self.query_one("#conv-preview", Static)
-        except Exception:  # noqa: BLE001 — outside a mounted screen during tests
+        except Exception:
             return
         conv = self.selected_conversation
         if not conv or conv.get("workspace_conversation_id") == NEW_CONVERSATION_SENTINEL:
@@ -864,7 +864,7 @@ class WorkspaceTUI(App[LaunchSpec | None]):
         if event.input.id == "filter-input":
             self.query_one("#conv-table", DataTable).focus()
 
-    def on_key(self, event) -> None:  # noqa: ANN001 — textual.events.Key
+    def on_key(self, event) -> None:
         # Esc in the filter input clears + closes it.
         from textual.widgets import Input as _Input  # local to avoid top-level confusion
         if event.key == "escape" and isinstance(self.focused, _Input) and self.focused.id == "filter-input":

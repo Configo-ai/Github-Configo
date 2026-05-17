@@ -35,12 +35,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mcp_proxy import run_proxy
 
 _DEFAULT_MODEL = os.environ.get("CONFIGO_COMPACT_MODEL", "llama3.2:3b")
 _OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
@@ -150,86 +152,28 @@ def _compact_descriptions(tools: list, cache: dict, model: str) -> bool:
     return dirty
 
 
-def _read_message(stream) -> dict | None:
-    """Read a newline-delimited JSON message from a binary stream."""
-    line = stream.readline()
-    if not line:
-        return None
-    try:
-        return json.loads(line.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError:
-        return None
-
-
-def _write_message(stream, payload: dict) -> None:
-    stream.write((json.dumps(payload) + "\n").encode("utf-8"))
-    stream.flush()
-
-
 def run(upstream_cmd: list[str], model: str) -> int:
-    upstream = subprocess.Popen(
-        upstream_cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=sys.stderr,
-        bufsize=0,
-    )
-    if upstream.stdin is None or upstream.stdout is None:
-        sys.stderr.write("mcp_compactor: failed to attach to upstream stdio\n")
-        return 1
-
     cache = _load_cache()
     cache_lock = threading.Lock()
 
-    # Use the raw byte buffers so we don't get into trouble with Python's
-    # text-mode line buffering (which can stall waiting for a newline on
-    # Windows with conpty between us and the parent process).
-    client_in = sys.stdin.buffer
-    client_out = sys.stdout.buffer
+    def on_request(msg: dict) -> dict:
+        _trace("c->u", msg)
+        return msg
 
-    def client_to_upstream() -> None:
-        try:
-            while True:
-                msg = _read_message(client_in)
-                if msg is None:
-                    break
-                _trace("c->u", msg)
-                _write_message(upstream.stdin, msg)
-        finally:
-            try:
-                upstream.stdin.close()
-            except OSError:
-                pass
+    def on_response(msg: dict) -> dict:
+        _trace("u->c", msg)
+        result = msg.get("result")
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            with cache_lock:
+                if _compact_descriptions(result["tools"], cache, model):
+                    _save_cache(cache)
+        return msg
 
-    def upstream_to_client() -> None:
-        try:
-            while True:
-                msg = _read_message(upstream.stdout)
-                if msg is None:
-                    break
-                _trace("u->c", msg)
-                result = msg.get("result")
-                if isinstance(result, dict) and isinstance(result.get("tools"), list):
-                    with cache_lock:
-                        if _compact_descriptions(result["tools"], cache, model):
-                            _save_cache(cache)
-                _write_message(client_out, msg)
-        finally:
-            try:
-                client_out.flush()
-            except OSError:
-                pass
-
-    t_c2u = threading.Thread(target=client_to_upstream, daemon=True)
-    t_u2c = threading.Thread(target=upstream_to_client, daemon=True)
-    t_c2u.start()
-    t_u2c.start()
-
-    # The upstream→client thread keeps the process alive while the agent is
-    # running. When upstream closes its stdout we exit; the client→upstream
-    # thread might still be blocked on a read, but daemon=True kills it.
-    t_u2c.join()
-    return upstream.wait()
+    return run_proxy(
+        upstream_cmd,
+        on_client_request=on_request,
+        on_upstream_response=on_response,
+    )
 
 
 def main() -> int:

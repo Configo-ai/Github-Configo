@@ -10,10 +10,6 @@ from pathlib import Path
 from runtime_manifest import plugins, repo_specs, server_names, skills_allow, system_prompt_appends, tool_profiles
 
 
-def _cmd(name: str) -> str:
-    return f"{name}.cmd" if platform.system() == "Windows" else name
-
-
 def _python() -> str:
     return "python" if platform.system() == "Windows" else "python3"
 

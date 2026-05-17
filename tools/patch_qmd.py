@@ -153,10 +153,15 @@ def main() -> int:
     if platform.system() == "Windows":
         results.append(patch_qmd_cmd(prefix))
     results.append(patch_llm_js(prefix))
+    has_warning = False
     for line in results:
-        prefix_char = "[OK]" if line.startswith(("ok:", "fixed:")) else "[!] "
+        ok = line.startswith(("ok:", "fixed:"))
+        if not ok:
+            has_warning = True
+        prefix_char = "[OK]" if ok else "[!] "
         print(f"  {prefix_char} {line}")
-    return 0 if all(not r.startswith("warn:") for r in results) else 0
+    # Non-zero on warnings so the caller (setup.bat / setup.sh) can react.
+    return 1 if has_warning else 0
 
 
 if __name__ == "__main__":

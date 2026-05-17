@@ -27,14 +27,14 @@ Tracing: set `CONFIGO_CGRAG_TRACE=1` to log every request/response pair to
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runtime_manifest import repo_specs  # noqa: E402
+from mcp_proxy import run_proxy
+from runtime_manifest import repo_specs
 
 # Where to write trace logs when enabled.
 _TRACE_PATH = Path(__file__).resolve().parent / ".code_graph_router.log"
@@ -79,7 +79,7 @@ class RepoIndex:
         return self.by_alias.get(repo.lower())
 
 
-def _augment_tool_schemas(tools: list[dict], aliases: list[str]) -> None:
+def _augment_tool_schemas(tools: list, aliases: list[str]) -> None:
     """Mutate the list in place — add an optional `repo` property to each
     tool's inputSchema so the MCP client surfaces it as a callable arg."""
     enum_values = sorted(aliases)
@@ -136,124 +136,82 @@ def _filter_result_by_path(result: dict, repo_prefix: str) -> dict:
     return result
 
 
-class JsonRpcStream:
-    """Newline-delimited JSON-RPC reader/writer over asyncio streams."""
-
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        self.reader = reader
-        self.writer = writer
-
-    async def read(self) -> dict | None:
-        line = await self.reader.readline()
-        if not line:
-            return None
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            return None
-
-    def write(self, payload: dict) -> None:
-        line = (json.dumps(payload) + "\n").encode("utf-8")
-        self.writer.write(line)
-
-
-async def _stdio_reader(stream) -> asyncio.StreamReader:
-    loop = asyncio.get_event_loop()
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await loop.connect_read_pipe(lambda: protocol, stream)
-    return reader
-
-
-async def _stdio_writer(stream) -> asyncio.StreamWriter:
-    loop = asyncio.get_event_loop()
-    transport, protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, stream)
-    return asyncio.StreamWriter(transport, protocol, None, loop)
-
-
-async def run(workspace_root: Path, upstream_cmd: list[str]) -> int:
+def run(workspace_root: Path, upstream_cmd: list[str]) -> int:
     repo_index = RepoIndex(workspace_root)
     aliases = repo_index.known_aliases
 
-    # Spawn upstream.
-    upstream = await asyncio.create_subprocess_exec(
-        *upstream_cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=sys.stderr,
-    )
-    if upstream.stdin is None or upstream.stdout is None:
-        sys.stderr.write("code-graph-router: failed to attach to upstream stdio\n")
-        return 1
-
-    # Wire stdio for client side.
-    client_reader = await _stdio_reader(sys.stdin)
-    client_writer = await _stdio_writer(sys.stdout)
-    upstream_stream = JsonRpcStream(upstream.stdout, upstream.stdin)
-    client_stream = JsonRpcStream(client_reader, client_writer)
-
-    # Track in-flight request ids → repo arg so we can filter the matching response.
+    # Track in-flight tools/call request ids → repo prefix so we know which
+    # responses to filter. Notifications and other methods pass through.
     pending_repo: dict = {}
 
-    async def client_to_upstream() -> None:
-        while True:
-            msg = await client_stream.read()
-            if msg is None:
-                break
-            _trace("c->u", msg)
-            method = msg.get("method")
+    def on_request(msg: dict) -> dict:
+        _trace("c->u", msg)
+        if msg.get("method") == "tools/call":
             params = msg.get("params") or {}
-            if method == "tools/call":
-                args = params.get("arguments") or {}
-                if isinstance(args, dict) and "repo" in args:
-                    repo = args.pop("repo")
-                    request_id = msg.get("id")
-                    if request_id is not None:
-                        prefix = repo_index.resolve(repo) if isinstance(repo, str) else None
-                        if prefix:
-                            pending_repo[request_id] = prefix
-                    params["arguments"] = args
-                    msg["params"] = params
-            upstream_stream.write(msg)
-            await upstream.stdin.drain()
+            args = params.get("arguments") or {}
+            if isinstance(args, dict) and "repo" in args:
+                repo = args.pop("repo")
+                request_id = msg.get("id")
+                if request_id is not None and isinstance(repo, str):
+                    prefix = repo_index.resolve(repo)
+                    if prefix:
+                        pending_repo[request_id] = prefix
+                params["arguments"] = args
+                msg["params"] = params
+        return msg
 
-    async def upstream_to_client() -> None:
-        while True:
-            msg = await upstream_stream.read()
-            if msg is None:
-                break
-            _trace("u->c", msg)
-            # tools/list response augmentation
-            if "result" in msg and isinstance(msg["result"], dict) and "tools" in msg["result"]:
-                tools = msg["result"]["tools"]
-                if isinstance(tools, list):
-                    _augment_tool_schemas(tools, aliases)
-            # tools/call response filtering
-            request_id = msg.get("id")
-            if request_id is not None and request_id in pending_repo:
-                prefix = pending_repo.pop(request_id)
-                if "result" in msg and isinstance(msg["result"], dict):
-                    msg["result"] = _filter_result_by_path(msg["result"], prefix)
-            client_stream.write(msg)
-            await client_writer.drain()
+    def on_response(msg: dict) -> dict:
+        _trace("u->c", msg)
+        # tools/list response augmentation
+        if "result" in msg and isinstance(msg["result"], dict) and isinstance(msg["result"].get("tools"), list):
+            _augment_tool_schemas(msg["result"]["tools"], aliases)
+        # tools/call response filtering
+        request_id = msg.get("id")
+        if request_id is not None and request_id in pending_repo:
+            prefix = pending_repo.pop(request_id)
+            if "result" in msg and isinstance(msg["result"], dict):
+                msg["result"] = _filter_result_by_path(msg["result"], prefix)
+        return msg
 
-    await asyncio.gather(client_to_upstream(), upstream_to_client())
-    return await upstream.wait()
+    return run_proxy(upstream_cmd, on_client_request=on_request, on_upstream_response=on_response)
 
 
 def main() -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root", required=True)
-    parser.add_argument("--upstream", nargs=argparse.REMAINDER, help="Upstream MCP server command (after --).")
-    args = parser.parse_args()
-    root = Path(args.root).resolve()
-    upstream_cmd = args.upstream or ["npx", "@er77/code-graph-rag-mcp", str(root)]
-    if upstream_cmd and upstream_cmd[0] == "--":
-        upstream_cmd = upstream_cmd[1:]
+    # Hand-rolled arg parse so argparse doesn't intercept `--` or short
+    # flags that belong to the upstream command.
+    argv = sys.argv[1:]
+    root_str: str | None = None
+    upstream_cmd: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--root" and i + 1 < len(argv):
+            root_str = argv[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--root="):
+            root_str = arg.split("=", 1)[1]
+            i += 1
+            continue
+        if arg == "--upstream":
+            upstream_cmd = argv[i + 1:]
+            if upstream_cmd and upstream_cmd[0] == "--":
+                upstream_cmd = upstream_cmd[1:]
+            break
+        if arg in ("-h", "--help"):
+            sys.stderr.write(
+                "usage: code_graph_router.py --root ROOT --upstream <upstream cmd ...>\n"
+            )
+            return 0
+        i += 1
+    if not root_str:
+        sys.stderr.write("code_graph_router: --root is required\n")
+        return 2
+    root = Path(root_str).resolve()
+    if not upstream_cmd:
+        upstream_cmd = ["npx", "@er77/code-graph-rag-mcp", str(root)]
     try:
-        return asyncio.run(run(root, upstream_cmd))
+        return run(root, upstream_cmd)
     except KeyboardInterrupt:
         return 130
 
