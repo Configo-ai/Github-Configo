@@ -83,6 +83,26 @@ echo   Note: rust-analyzer not auto-installed (no Rust repos detected).
 echo         If you add Rust later: rustup component add rust-analyzer
 
 echo.
+echo   Installing Ollama + small local model (used by the MCP description compactor)...
+where ollama >nul 2>nul
+if errorlevel 1 (
+    where winget >nul 2>nul && (
+        call winget install --silent --accept-source-agreements --accept-package-agreements Ollama.Ollama
+        echo   [OK] Ollama installed via winget
+    ) || (
+        echo   [WARN] winget not on PATH; install Ollama manually from https://ollama.com/download
+    )
+) else (
+    echo   [OK] Ollama already on PATH
+)
+where ollama >nul 2>nul && (
+    REM Pull the model used by tools/mcp_compactor.py. Idempotent — Ollama
+    REM short-circuits when the manifest is already current.
+    call ollama pull llama3.2:3b
+    echo   [OK] llama3.2:3b ready
+)
+
+echo.
 where kimi >nul 2>nul
 if errorlevel 1 (
     echo   Installing Kimi Code CLI via uv...

@@ -62,6 +62,17 @@ def system_prompt_appends(root: Path) -> list[str]:
     return list(load_manifest(root).get("system_prompt_appends", []))
 
 
+def tool_profiles(root: Path) -> dict[str, list[str] | None]:
+    """Named whitelists of MCP server names per task category.
+
+    Profile value `None` (or empty list) means "expose every configured MCP"
+    — that's the default for the `all` profile. Any other profile lists the
+    MCP server names allowed for that category; configure_all keeps only
+    those in the active client config when a profile is applied.
+    """
+    return dict(load_manifest(root).get("mcp", {}).get("tool_profiles", {}))
+
+
 def plugins(root: Path) -> list[str]:
     return list(load_manifest(root)["plugins"])
 

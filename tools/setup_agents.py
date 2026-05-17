@@ -7,7 +7,7 @@ import platform
 import shutil
 from pathlib import Path
 
-from runtime_manifest import plugins, repo_specs, server_names, skills_allow, system_prompt_appends
+from runtime_manifest import plugins, repo_specs, server_names, skills_allow, system_prompt_appends, tool_profiles
 
 
 def _cmd(name: str) -> str:
@@ -193,6 +193,32 @@ def _language_server_servers(root: Path) -> dict[str, dict]:
     return out
 
 
+def _wrap_with_compactor(entry: dict, root: Path, model: str) -> dict:
+    """Wrap an MCP server entry so the description-compactor middleware
+    sits between the upstream and the MCP client. The middleware only
+    mutates `tools/list` responses (rewriting descriptions terse via a
+    local Ollama call); tool calls pass through untouched.
+    """
+    compactor = root / "tools" / "mcp_compactor.py"
+    cmd = entry.get("command", "")
+    args = list(entry.get("args", []))
+    wrapped: dict = {
+        "command": _python(),
+        "args": [
+            str(compactor),
+            "--model",
+            model,
+            "--upstream",
+            "--",
+            cmd,
+            *args,
+        ],
+    }
+    if "env" in entry:
+        wrapped["env"] = entry["env"]
+    return wrapped
+
+
 def _build_mcp_servers(root: Path, names: dict[str, str]) -> dict[str, dict]:
     """Build the Claude-Code-style `mcpServers` dict shared across MCP clients."""
     auggie_cmd, auggie_args = _spawn_cmd("auggie", _auggie_args(root))
@@ -215,6 +241,23 @@ def _build_mcp_servers(root: Path, names: dict[str, str]) -> dict[str, dict]:
         if ctx7.get("headers"):
             entry["headers"] = ctx7["headers"]
         servers[names["context7"]] = entry
+
+    # Wrap every local (stdio) entry with the description compactor so every
+    # MCP client sees the same compressed tool descriptions. Remote/SSE entries
+    # (like context7) pass through untouched — the compactor only speaks stdio.
+    from runtime_manifest import load_manifest
+
+    compactor_cfg = (load_manifest(root).get("mcp") or {}).get("description_compactor") or {}
+    if compactor_cfg.get("enabled"):
+        model = compactor_cfg.get("model", "llama3.2:3b")
+        wrapped: dict[str, dict] = {}
+        for name, entry in servers.items():
+            # Skip non-stdio entries (SSE/remote MCP); they have no `command`.
+            if "command" not in entry:
+                wrapped[name] = entry
+                continue
+            wrapped[name] = _wrap_with_compactor(entry, root, model)
+        servers = wrapped
     return servers
 
 
@@ -465,6 +508,57 @@ def install_configo_helper(root: Path) -> None:
         )
         shim_path.write_text(contents, encoding="utf-8")
         shim_path.chmod(0o755)
+
+
+def apply_profile(root: Path, profile_name: str) -> dict:
+    """Filter the active MCP server set down to the named profile's whitelist.
+
+    Writes the filtered set to both Claude Code's settings.json and OpenCode's
+    opencode.json. The "all" profile (or a profile whose value is None/empty)
+    restores the full set by calling configure_all().
+
+    Returns a payload describing what was applied.
+    """
+    profiles = tool_profiles(root)
+    if profile_name not in profiles:
+        raise SystemExit(
+            f"Unknown profile {profile_name!r}. Known profiles: {', '.join(sorted(profiles))}"
+        )
+    whitelist = profiles[profile_name]
+    if not whitelist:
+        # `all`-style profile: restore the full set.
+        configure_all(root)
+        return {"profile": profile_name, "kept": "all", "dropped": []}
+
+    keep = set(whitelist)
+    # Always keep the configo-ws bridge so the TUI / worktree tooling keeps
+    # working regardless of profile. Drop this and you'd lose the cross-client
+    # correlation MCP entirely.
+    keep.add("configo-ws")
+
+    dropped: list[str] = []
+    # Filter Claude Code settings.
+    settings_path = Path.home() / ".claude" / "settings.json"
+    settings = _load_json(settings_path)
+    servers = settings.get("mcpServers") or {}
+    for name in list(servers):
+        if name not in keep:
+            dropped.append(name)
+            servers.pop(name, None)
+    settings["mcpServers"] = servers
+    _write_json(settings_path, settings)
+
+    # Filter OpenCode mirror.
+    oc_config_path = _opencode_config_dir() / "opencode.json"
+    oc_config = _load_json(oc_config_path)
+    oc_mcp = oc_config.get("mcp") or {}
+    for name in list(oc_mcp):
+        if name not in keep:
+            oc_mcp.pop(name, None)
+    oc_config["mcp"] = oc_mcp
+    _write_json(oc_config_path, oc_config)
+
+    return {"profile": profile_name, "kept": sorted(keep), "dropped": sorted(set(dropped))}
 
 
 def configure_all(root: Path) -> None:

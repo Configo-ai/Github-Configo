@@ -96,6 +96,18 @@
       "ws": "configo-ws",
       "context7": "context7"
     },
+    "description_compactor": {
+      "enabled": true,
+      "model": "llama3.2:3b"
+    },
+    "tool_profiles": {
+      "all": null,
+      "refactor": ["lang-go", "lang-ts", "lang-py", "code-graph", "configo-ws"],
+      "debug": ["lang-go", "lang-ts", "lang-py", "auggie", "qmd-knowledge", "configo-ws"],
+      "feature": ["auggie", "qmd-knowledge", "code-graph", "configo-ws"],
+      "docs": ["qmd-knowledge", "context7"],
+      "bare": ["configo-ws"]
+    },
     "code_graph_rag": {
       "enabled": true,
       "package": "@er77/code-graph-rag-mcp",

@@ -113,6 +113,26 @@ else
 fi
 
 echo ""
+if command -v ollama >/dev/null 2>&1; then
+  echo "  ✓ Ollama already on PATH"
+else
+  echo "  Installing Ollama (local-model host for the MCP description compactor)..."
+  if [[ "$(uname)" == "Darwin" ]]; then
+    if command -v brew >/dev/null 2>&1; then
+      brew install ollama || echo "  ! brew install ollama failed"
+    else
+      echo "  ! Install Homebrew or get Ollama manually from https://ollama.com/download"
+    fi
+  else
+    curl -fsSL https://ollama.com/install.sh | sh || echo "  ! Ollama install script failed; install manually from https://ollama.com/download"
+  fi
+fi
+if command -v ollama >/dev/null 2>&1; then
+  ollama pull llama3.2:3b
+  echo "  ✓ llama3.2:3b ready"
+fi
+
+echo ""
 if command -v mcp-language-server >/dev/null 2>&1; then
   echo "  ✓ mcp-language-server already on PATH"
 elif command -v go >/dev/null 2>&1; then

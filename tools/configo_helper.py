@@ -129,6 +129,42 @@ def _cmd_compact(root: Path, rest: list[str]) -> int:
     return 0
 
 
+def _cmd_profile(root: Path, rest: list[str]) -> int:
+    """Apply a tool profile from the manifest (filter the MCP server set)."""
+    import argparse as _argparse
+
+    from runtime_manifest import tool_profiles
+
+    profiles = tool_profiles(root)
+    inner = _argparse.ArgumentParser(prog="configo-helper profile")
+    inner.add_argument(
+        "name",
+        nargs="?",
+        choices=sorted(profiles.keys()),
+        help="Profile to apply. Omit to list available profiles.",
+    )
+    parsed = inner.parse_args(rest)
+    if not parsed.name:
+        print("Available profiles:")
+        for name in sorted(profiles.keys()):
+            value = profiles[name]
+            if not value:
+                print(f"  - {name}: (all MCPs)")
+            else:
+                print(f"  - {name}: {', '.join(value)}")
+        return 0
+    import setup_agents
+
+    payload = setup_agents.apply_profile(root, parsed.name)
+    if payload["kept"] == "all":
+        print(f"Applied profile '{payload['profile']}': restored full MCP set.")
+    else:
+        print(f"Applied profile '{payload['profile']}': kept {len(payload['kept'])}, dropped {len(payload['dropped'])}.")
+        if payload["dropped"]:
+            print(f"  dropped: {', '.join(payload['dropped'])}")
+    return 0
+
+
 def _cmd_status(root: Path, _rest: list[str]) -> int:
     import session_runtime
     from runtime_manifest import repo_specs
@@ -152,6 +188,7 @@ COMMANDS = {
     "new": _cmd_new,
     "rename": _cmd_rename,
     "compact": _cmd_compact,
+    "profile": _cmd_profile,
 }
 
 

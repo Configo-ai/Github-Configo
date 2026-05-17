@@ -25,3 +25,8 @@ tools/.system_prompt_append.md
 
 # Trace log for the code-graph router (only written when CONFIGO_CGRAG_TRACE=1).
 tools/.code_graph_router.log
+
+# Per-tool compacted descriptions cache (regenerated when an upstream tool
+# description changes; not a build artifact worth committing).
+tools/.mcp_descriptions.json
+tools/.mcp_compactor.log
